@@ -1,6 +1,6 @@
 # MDGraph Output Contracts
 
-This document records the stable top-level JSON shapes for the 0.1 CLI surface. Nested record fields follow the public TypeScript model in `src/types.ts` unless noted otherwise.
+This document records the stable top-level JSON shapes for the 0.2 CLI surface. Nested record fields follow the public TypeScript model in `src/types.ts` unless noted otherwise.
 
 ## `index --json`
 
