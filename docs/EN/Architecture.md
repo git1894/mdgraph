@@ -14,6 +14,7 @@ MDGraph uses this implemented pipeline: scanner -> parser -> extractor/resolver 
 | Resolution | `src/resolution/link-resolver.ts` | Resolves Markdown and WikiLink targets to indexed documents or sections. |
 | Storage | `src/db/*` | SQLite connection, schema, record replacement, incremental updates, graph queries, and storage diagnostics. |
 | Query | `src/query/*` | Search ranking, context packing, and graph trace. |
+| Evaluation | `src/evaluation/*` | Retrieval evaluation cases, expected records, and lightweight metrics for search/context/trace quality. |
 | Semantic | `src/semantic/local-embedding.ts` | Deterministic local vector generation and cosine scoring. |
 | MCP | `src/mcp/*` | Newline-delimited JSON-RPC MCP server and tool handlers. |
 | Watch | `src/watcher/file-watcher.ts` | Debounced incremental reindexing via chokidar. |
@@ -64,6 +65,8 @@ When the same document or section is reached by multiple paths, search keeps the
 `buildContext` then starts from ranked search sections, performs bounded graph expansion through non-containment edges, packages selected sections under a character budget, and includes reasons such as FTS hit, semantic hit, exact entity match, or the graph edge traversal path.
 
 `traceNodes` performs bounded graph traversal between resolved nodes and returns each step with edge kind, provenance, and confidence.
+
+`evaluateRetrieval` runs the built-in alpha evaluation cases against an indexed project. It reuses `searchGraph`, `buildContext`, and `traceNodes`, then reports expected-document recall, expected-section recall, context precision, trace success, latency, returned character budget, and reason coverage. The evaluation output is a measurement aid, not a learned ranking model and not a replacement for focused regression tests.
 
 ## MCP Boundary
 

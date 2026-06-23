@@ -71,6 +71,20 @@ When no node is found, it returns:
 - `from`, `to`, `found`, `steps`, optional `message`.
 - Each step includes `fromId`, `fromLabel`, `edgeFromId`, `edgeToId`, `edgeKind`, `toId`, `toLabel`, `traversalDirection`, `confidence`, and `provenance`.
 
+## `eval --json`
+
+`mdgraph eval --json` runs the built-in alpha retrieval evaluation cases against an indexed project and returns:
+
+- `querySet`: currently `alpha`.
+- `limit`: search result limit used per case.
+- `generatedAt`: ISO timestamp for the evaluation run.
+- `summary`: `cases`, `passed`, `failed`, `averageTopKDocumentRecall`, `averageExpectedSectionRecall`, `averageContextPrecision`, `averageLatencyMs`, and `averageReturnedChars`.
+- `cases`: per-case results with `id`, `query`, `passed`, `expected`, `observed`, and `metrics`.
+
+Per-case `expected` includes expected documents, sections, entities, edge kinds, and source refs. Per-case `observed` includes ranked search document paths, context item paths/headings/reasons, matched entities, resolved entities, resolved source refs, observed edge kinds, and optional trace results. Per-case `metrics` includes top-K document recall, expected-section recall, context precision, entity recall, source-ref recall, edge-kind coverage, trace success, latency, returned characters, budget fit, and reason coverage.
+
+`mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project.
+
 ## `doctor --json`
 
 `mdgraph doctor --json` returns:

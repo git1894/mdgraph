@@ -6,6 +6,7 @@ import { runDoctor, formatDoctorReport } from "../analysis/doctor.js";
 import { databasePath, initConfig, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeResolution } from "../db/repositories.js";
+import { evaluateRetrieval } from "../evaluation/retrieval-eval.js";
 import { indexProject } from "../indexer.js";
 import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
@@ -141,6 +142,24 @@ program
   });
 
 program
+  .command("eval")
+  .description("Run retrieval quality evaluation against an indexed project")
+  .option("--json", "Print JSON output")
+  .option("--path <path>", "Project root to evaluate", process.cwd())
+  .option("--limit <number>", "Search results per evaluation case", parseInteger)
+  .action((options: { json?: boolean; path: string; limit?: number }) => {
+    const projectRoot = validateProjectRoot(options.path);
+    const config = loadConfig(projectRoot);
+    const repository = openRepository(projectRoot);
+    try {
+      const report = evaluateRetrieval(repository, config, { limit: options.limit });
+      printResult(options.json, report, formatEvaluationReport(report));
+    } finally {
+      closeRepository(repository);
+    }
+  });
+
+program
   .command("serve")
   .description("Serve MDGraph over the Model Context Protocol")
   .option("--mcp", "Run an MCP server over stdio")
@@ -194,8 +213,8 @@ program.parseAsync().catch((error: unknown) => {
   process.exitCode = 1;
 });
 
-function openRepository(): GraphRepository {
-  return new GraphRepository(openExistingDatabase(validateProjectRoot(process.cwd())));
+function openRepository(projectRoot = process.cwd()): GraphRepository {
+  return new GraphRepository(openExistingDatabase(validateProjectRoot(projectRoot)));
 }
 
 function closeRepository(repository: GraphRepository): void {
@@ -274,6 +293,32 @@ function formatTrace(trace: ReturnType<typeof traceNodes>): string {
   return trace.steps
     .map((step, index) => `${index + 1}. ${formatTraceStep(step)}`)
     .join("\n");
+}
+
+function formatEvaluationReport(report: ReturnType<typeof evaluateRetrieval>): string {
+  const lines = [
+    `Evaluation query set: ${report.querySet}`,
+    `Cases: ${report.summary.cases}, passed: ${report.summary.passed}, failed: ${report.summary.failed}`,
+    `Average top-K document recall: ${formatMetric(report.summary.averageTopKDocumentRecall)}`,
+    `Average expected-section recall: ${formatMetric(report.summary.averageExpectedSectionRecall)}`,
+    `Average context precision: ${formatMetric(report.summary.averageContextPrecision)}`,
+    `Average latency: ${report.summary.averageLatencyMs.toFixed(1)} ms`,
+    "",
+    ...report.cases.map((result) => {
+      const status = result.passed ? "pass" : "fail";
+      return [
+        `${result.id}: ${status}`,
+        `  query: ${result.query}`,
+        `  topKDocumentRecall=${formatMetric(result.metrics.topKDocumentRecall)}, expectedSectionRecall=${formatMetric(result.metrics.expectedSectionRecall)}, contextPrecision=${formatMetric(result.metrics.contextPrecision)}`,
+        `  traceSuccess=${result.metrics.traceSuccess ?? "n/a"}, returnedChars=${result.metrics.returnedChars}, budgetFit=${result.metrics.budgetFit}`
+      ].join("\n");
+    })
+  ];
+  return lines.join("\n");
+}
+
+function formatMetric(value: number): string {
+  return value.toFixed(2);
 }
 
 function nodeResolutionJson(resolution: NodeResolution): unknown {

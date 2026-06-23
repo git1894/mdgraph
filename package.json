@@ -26,6 +26,7 @@
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepack": "npm run build",
     "smoke:cli": "node scripts/smoke-cli.mjs",
+    "smoke:eval": "node scripts/smoke-eval.mjs",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "task:check": "node scripts/task-tools.mjs check",
     "task:new": "node scripts/task-tools.mjs new",

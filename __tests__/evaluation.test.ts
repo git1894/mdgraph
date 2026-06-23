@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config/load-config.js";
 import { openDatabase } from "../src/db/connection.js";
 import { GraphRepository } from "../src/db/repositories.js";
+import { ALPHA_EVALUATION_CASES, evaluateRetrieval } from "../src/evaluation/retrieval-eval.js";
 import { indexProject } from "../src/indexer.js";
 import { runDoctor } from "../src/analysis/doctor.js";
 import { buildContext } from "../src/query/context-builder.js";
@@ -79,5 +80,44 @@ describe("alpha evaluation corpus", () => {
     expect(doctor.summary.deadLinks).toBe(0);
     expect(doctor.summary.staleSourceRefs).toBe(0);
     expect(doctor.summary.missingDefinitions).toBe(0);
+  });
+
+  it("runs retrieval evaluation cases with metrics and expected records", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-alpha-metrics-"));
+    tempDirs.push(root);
+    createAlphaFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const report = evaluateRetrieval(repository, loadConfig(root));
+
+      expect(report.querySet).toBe("alpha");
+      expect(report.cases).toHaveLength(ALPHA_EVALUATION_CASES.length);
+      expect(report.summary.cases).toBe(ALPHA_EVALUATION_CASES.length);
+      expect(report.summary.averageTopKDocumentRecall).toBeGreaterThanOrEqual(0);
+      expect(report.summary.averageTopKDocumentRecall).toBeLessThanOrEqual(1);
+      expect(report.summary.averageExpectedSectionRecall).toBeGreaterThanOrEqual(0);
+      expect(report.summary.averageExpectedSectionRecall).toBeLessThanOrEqual(1);
+      expect(report.summary.averageContextPrecision).toBeGreaterThanOrEqual(0);
+      expect(report.summary.averageContextPrecision).toBeLessThanOrEqual(1);
+
+      const first = report.cases.find((result) => result.id === "alpha-1");
+      expect(first?.expected.expectedDocuments).toContain("docs/redis-cache-design.md");
+      expect(first?.expected.expectedSections).toContainEqual({ path: "docs/login-flow.md", heading: "Login Flow" });
+      expect(first?.expected.expectedEntities).toContain("RedisTimeoutError");
+      expect(first?.expected.expectedEdges).toContain("DEPENDS_ON");
+      expect(first?.expected.expectedSourceRefs).toContain("src/cache/redis.ts");
+      expect(first?.metrics.budgetFit).toBe(true);
+      expect(first?.metrics.reasonCoverage).toBe(true);
+
+      for (const result of report.cases) {
+        expect(result.query.length).toBeGreaterThan(0);
+        expect(result.metrics.latencyMs).toBeGreaterThanOrEqual(0);
+        expect(result.metrics.returnedChars).toBeLessThanOrEqual(loadConfig(root).search.maxContextChars);
+      }
+    } finally {
+      repository.close();
+    }
   });
 });

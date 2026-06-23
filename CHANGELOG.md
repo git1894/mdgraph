@@ -4,6 +4,17 @@ All notable changes to MDGraph will be documented in this file.
 
 This project follows the spirit of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses semantic versioning for public releases once the API surface is stable.
 
+## Unreleased
+
+### Added
+
+- Added `mdgraph eval` for the built-in alpha retrieval evaluation set, reporting per-case expected records and lightweight search/context/trace metrics.
+- Added `npm run smoke:eval` to validate the built CLI evaluation path against a temporary alpha-style corpus.
+
+### Fixed
+
+- Prevented natural-language FTS queries containing boolean words or underscore-separated terms from triggering SQLite FTS5 `detail=none` phrase-query errors.
+
 ## 0.1.0 - 2026-06-22
 
 ### Added

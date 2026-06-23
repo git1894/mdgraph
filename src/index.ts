@@ -2,6 +2,7 @@ export { DEFAULT_CONFIG, configPath, databasePath, initConfig, loadConfig } from
 export { runDoctor, formatDoctorReport } from "./analysis/doctor.js";
 export { openDatabase } from "./db/connection.js";
 export { GraphRepository } from "./db/repositories.js";
+export { ALPHA_EVALUATION_CASES, evaluateRetrieval } from "./evaluation/retrieval-eval.js";
 export { buildGraphRecords } from "./extraction/graph-builder.js";
 export { extractEntities } from "./extraction/entity-extractor.js";
 export { indexProject } from "./indexer.js";

@@ -88,9 +88,15 @@ function toFtsQuery(query: string): string {
   const tokens = query
     .toLowerCase()
     .match(/[\p{L}\p{N}_]+/gu)
+    ?.flatMap((token) => token.split("_"))
     ?.filter((token) => token.length > 1)
+    .filter((token) => !isFtsOperatorToken(token))
     .slice(0, 12) ?? [];
   return [...new Set(tokens)].map((token) => `${escapeFtsToken(token)}*`).join(" OR ");
+}
+
+function isFtsOperatorToken(token: string): boolean {
+  return token === "and" || token === "or" || token === "not" || token === "near";
 }
 
 function escapeFtsToken(token: string): string {

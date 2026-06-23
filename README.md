@@ -190,6 +190,11 @@ node dist/bin/mdgraph.js node "docs/auth-v2-design.md#session-refresh" # Resolve
 node dist/bin/mdgraph.js trace "AuthService" "RedisTimeoutError"     # Graph path between two nodes
 node dist/bin/mdgraph.js trace "AuthService" "RedisTimeoutError" --depth 8  # Custom depth
 
+# Retrieval evaluation
+node dist/bin/mdgraph.js eval                              # Run built-in alpha retrieval evaluation
+node dist/bin/mdgraph.js eval --json                       # Machine-readable metrics
+node dist/bin/mdgraph.js eval --path /your/project --json  # Evaluate an explicit indexed project
+
 # MCP Server
 node dist/bin/mdgraph.js serve --mcp                       # Start stdio MCP server
 node dist/bin/mdgraph.js serve --mcp --path /your/project  # With explicit project root
@@ -209,7 +214,7 @@ node dist/bin/mdgraph.js help                              # All commands
 node dist/bin/mdgraph.js help search                       # Command-specific help
 ```
 
-All query commands support `--json` for structured output useful to agents and scripts. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
+All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality; it is a deterministic smoke check, not a real agent A/B benchmark. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
 
 ---
 

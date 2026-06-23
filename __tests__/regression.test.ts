@@ -96,6 +96,8 @@ describe("regression coverage", () => {
       const results = searchGraph(repository, config, "auth-v2", 5);
       expect(results.some((result) => result.document.path.endsWith("auth-v2-design.md"))).toBe(true);
       expect(() => searchGraph(repository, config, "redis.lock.ttl AUTH-401", 5)).not.toThrow();
+      expect(() => searchGraph(repository, config, "documents do not link or reference AuthService", 5)).not.toThrow();
+      expect(() => searchGraph(repository, config, "which docs mention AUTH_RETRY_LIMIT or source_refs", 5)).not.toThrow();
     } finally {
       repository.close();
     }

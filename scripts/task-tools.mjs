@@ -22,6 +22,7 @@ try {
     case "smoke":
       runCommandChain([
         ["npm run smoke:cli", "npm", ["run", "smoke:cli"]],
+        ["npm run smoke:eval", "npm", ["run", "smoke:eval"]],
         ["npm run smoke:pack", "npm", ["run", "smoke:pack"]]
       ]);
       break;
