@@ -10,7 +10,7 @@ import { evaluateRetrieval } from "../evaluation/retrieval-eval.js";
 import { indexProject } from "../indexer.js";
 import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
-import { searchGraph } from "../query/search.js";
+import { explainSearchGraph, searchGraph } from "../query/search.js";
 import { traceNodes } from "../query/trace.js";
 import { watchProject } from "../watcher/file-watcher.js";
 
@@ -82,10 +82,16 @@ program
   .option("--json", "Print JSON output")
   .option("--limit <number>", "Maximum results", parseInteger)
   .option("--semantic", "Include local semantic vector matches when vectors are indexed")
-  .action((query: string, options: { json?: boolean; limit?: number; semantic?: boolean }) => {
+  .option("--explain", "Include query parsing and ranking explanation details")
+  .action((query: string, options: { json?: boolean; limit?: number; semantic?: boolean; explain?: boolean }) => {
     const config = loadConfig(process.cwd());
     const repository = openRepository();
     try {
+      if (options.explain) {
+        const explanation = explainSearchGraph(repository, config, query, options.limit ?? config.search.defaultLimit, { semantic: options.semantic });
+        printResult(options.json, explanation, formatSearchExplanation(explanation));
+        return;
+      }
       const results = searchGraph(repository, config, query, options.limit ?? config.search.defaultLimit, { semantic: options.semantic });
       printResult(options.json, results, formatSearchResults(results));
     } finally {
@@ -98,11 +104,12 @@ program
   .description("Build an explainable context package for a question")
   .argument("<query>")
   .option("--json", "Print JSON output")
-  .action((query: string, options: { json?: boolean }) => {
+  .option("--debug", "Include context packing and graph expansion debug details")
+  .action((query: string, options: { json?: boolean; debug?: boolean }) => {
     const config = loadConfig(process.cwd());
     const repository = openRepository();
     try {
-      const context = buildContext(repository, config, query);
+      const context = buildContext(repository, config, query, { debug: options.debug });
       printResult(options.json, context, formatContext(context));
     } finally {
       closeRepository(repository);
@@ -273,17 +280,50 @@ function formatSearchResults(results: ReturnType<typeof searchGraph>): string {
     .join("\n");
 }
 
+function formatSearchExplanation(explanation: ReturnType<typeof explainSearchGraph>): string {
+  const entityLines = explanation.matchedEntities.length
+    ? explanation.matchedEntities.map((entity) => `- ${entity.name} (${entity.kind}) in ${entity.documentFrequency} document(s)`)
+    : ["- none"];
+  const resultLines = explanation.results.length
+    ? explanation.results.map((result, index) => `${index + 1}. ${result.document.path}${result.section ? `#${result.section.anchor}` : ""} score=${result.score.toFixed(2)} reason=${result.reason}`)
+    : ["No results."];
+  return [
+    `Query: ${explanation.query}`,
+    `FTS query: ${explanation.ftsQuery || "none"}`,
+    `Entity candidates: ${explanation.entityCandidates.join(", ") || "none"}`,
+    `Semantic enabled: ${explanation.semanticEnabled}`,
+    "Matched entities:",
+    ...entityLines,
+    "Results:",
+    ...resultLines
+  ].join("\n");
+}
+
 function formatContext(context: ReturnType<typeof buildContext>): string {
   if (!context.items.length) {
     return "No context found.";
   }
-  return context.items
+  const items = context.items
     .map((item, index) => {
       const heading = item.heading ? `# ${item.heading}` : item.title;
       const lines = item.lines ? `:${item.lines.start}` : "";
       return `## ${index + 1}. ${item.path}${lines}\nReason: ${item.reason}\n${heading}\n${item.content}`;
     })
     .join("\n\n");
+  if (!context.debug) {
+    return items;
+  }
+  return [
+    items,
+    "",
+    "## Debug",
+    `Seed nodes: ${context.debug.seedNodes}`,
+    `Visited nodes: ${context.debug.visitedNodes}`,
+    `Expanded edges: ${context.debug.expandedEdges}`,
+    `Candidates: ${context.debug.candidateCount} (${context.debug.directCandidates} direct, ${context.debug.expandedCandidates} expanded)`,
+    `Skipped visited: ${context.debug.skippedVisitedNodes}, node-limit: ${context.debug.skippedByNodeLimit}, depth: ${context.debug.skippedByDepth}`,
+    `Budget truncated items: ${context.debug.budgetTruncatedItems}, skipped items: ${context.debug.budgetSkippedItems}`
+  ].join("\n");
 }
 
 function formatTrace(trace: ReturnType<typeof traceNodes>): string {

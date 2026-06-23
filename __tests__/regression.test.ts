@@ -7,7 +7,7 @@ import { openDatabase, openExistingDatabase } from "../src/db/connection.js";
 import { GraphRepository } from "../src/db/repositories.js";
 import { indexProject } from "../src/indexer.js";
 import { buildContext } from "../src/query/context-builder.js";
-import { searchGraph } from "../src/query/search.js";
+import { explainSearchGraph, searchGraph } from "../src/query/search.js";
 import { traceNodes } from "../src/query/trace.js";
 import type { MDGraphConfig } from "../src/types.js";
 import { stableId } from "../src/utils/id.js";
@@ -177,9 +177,104 @@ describe("regression coverage", () => {
         search: { ...DEFAULT_CONFIG.search, maxContextChars: 80 }
       };
       const context = buildContext(repository, config, "AuthService RedisTimeoutError");
+      const debugContext = buildContext(repository, config, "AuthService RedisTimeoutError", { debug: true });
       expect(context.usedChars).toBeLessThanOrEqual(context.maxChars);
       expect(context.items.length).toBeGreaterThan(0);
       expect(context.items.reduce((sum, item) => sum + item.content.length, 0)).toBe(context.usedChars);
+      expect(debugContext.debug?.budgetTruncatedItems).toBeGreaterThan(0);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("orders context across documents before repeating sections from one document", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-context-diversity-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "alpha.md"), [
+      "# Alpha",
+      "",
+      "## First",
+      "",
+      "`SharedSignal` appears in the first Alpha section.",
+      "",
+      "## Second",
+      "",
+      "`SharedSignal` appears in the second Alpha section.",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "beta.md"), [
+      "# Beta",
+      "",
+      "## Only",
+      "",
+      "`SharedSignal` appears in the Beta section.",
+      ""
+    ].join("\n"), "utf8");
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const config: MDGraphConfig = {
+        ...DEFAULT_CONFIG,
+        search: { ...DEFAULT_CONFIG.search, defaultLimit: 4 }
+      };
+      const context = buildContext(repository, config, "SharedSignal");
+      const firstTwoPaths = context.items.slice(0, 2).map((item) => item.path);
+      const sectionKeys = context.items.map((item) => `${item.path}#${item.heading ?? ""}`);
+
+      expect(new Set(firstTwoPaths)).toEqual(new Set(["docs/alpha.md", "docs/beta.md"]));
+      expect(new Set(sectionKeys).size).toBe(sectionKeys.length);
+      expect(context.items.every((item) => item.reason.length > 0)).toBe(true);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("reports context graph expansion fanout caps", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-context-fanout-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "hub.md"), [
+      "---",
+      "id: hub",
+      "title: Hub",
+      "defines: [HubThing]",
+      "depends_on:",
+      ...Array.from({ length: 20 }, (_, index) => `  - leaf-${index + 1}`),
+      "---",
+      "# Hub",
+      "",
+      "`HubThing` fans out to many leaves.",
+      ""
+    ].join("\n"), "utf8");
+    for (let index = 1; index <= 20; index += 1) {
+      fs.writeFileSync(path.join(docsDir, `leaf-${index}.md`), [
+        "---",
+        `id: leaf-${index}`,
+        `title: Leaf ${index}`,
+        "---",
+        `# Leaf ${index}`,
+        "",
+        `Leaf ${index} documents one dependency.`,
+        ""
+      ].join("\n"), "utf8");
+    }
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const config: MDGraphConfig = {
+        ...DEFAULT_CONFIG,
+        search: { ...DEFAULT_CONFIG.search, defaultLimit: 1 }
+      };
+      const context = buildContext(repository, config, "HubThing", { debug: true });
+
+      expect(context.debug?.expandedEdges).toBeGreaterThan(0);
+      expect(context.debug?.skippedByNodeLimit).toBeGreaterThan(0);
+      expect(context.debug?.visitedNodes).toBeGreaterThanOrEqual(context.debug?.seedNodes ?? 0);
     } finally {
       repository.close();
     }
@@ -194,11 +289,45 @@ describe("regression coverage", () => {
     const repository = new GraphRepository(openDatabase(root));
     try {
       const context = buildContext(repository, DEFAULT_CONFIG, "AuthService");
+      const debugContext = buildContext(repository, DEFAULT_CONFIG, "AuthService", { debug: true });
       const dependency = context.items.find((item) => item.path === "docs/redis-cache-design.md");
+      const firstExpandedIndex = context.items.findIndex((item) => item.reason.includes("graph expansion"));
+      const lastDirectIndex = context.items.reduce(
+        (lastIndex, item, index) => item.reason.includes("graph expansion") ? lastIndex : index,
+        -1
+      );
 
       expect(dependency).toBeDefined();
       expect(dependency?.reason).toContain("graph expansion");
       expect(dependency?.reason).toContain("DEPENDS_ON");
+      expect(firstExpandedIndex).toBeGreaterThan(lastDirectIndex);
+      expect(context.debug).toBeUndefined();
+      expect(debugContext.debug?.seedNodes).toBeGreaterThan(0);
+      expect(debugContext.debug?.visitedNodes).toBeGreaterThanOrEqual(debugContext.debug?.seedNodes ?? 0);
+      expect(debugContext.debug?.candidateCount).toBe(debugContext.debug?.directCandidates + debugContext.debug?.expandedCandidates);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("explains search query parsing and ranking inputs without changing results", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-search-explain-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const config = loadConfig(root);
+      const results = searchGraph(repository, config, "AuthService RedisTimeoutError", 5);
+      const explanation = explainSearchGraph(repository, config, "AuthService RedisTimeoutError", 5);
+
+      expect(explanation.query).toBe("AuthService RedisTimeoutError");
+      expect(explanation.ftsQuery).toContain("authservice*");
+      expect(explanation.entityCandidates).toContain("AuthService");
+      expect(explanation.matchedEntities.map((entity) => entity.name)).toContain("AuthService");
+      expect(explanation.results.map((result) => result.document.path)).toEqual(results.map((result) => result.document.path));
+      expect(explanation.results.every((result) => result.reason.length > 0)).toBe(true);
     } finally {
       repository.close();
     }
@@ -229,6 +358,69 @@ describe("regression coverage", () => {
 
       expect(penalized[0].score).toBeLessThan(unpenalized[0].score);
       expect(penalized[0].reason).toContain("down-ranked high-frequency entity match");
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("applies trust tier and status ranking adjustments to otherwise similar definition matches", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-ranking-adjustments-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "validated.md"), [
+      "---",
+      "id: validated-rank-signal",
+      "title: Validated Rank Signal",
+      "type: design",
+      "trust_tier: validated",
+      "defines: [RankSignal]",
+      "---",
+      "# Validated Rank Signal",
+      "",
+      "## Defines",
+      "",
+      "`RankSignal` is defined here."
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "authored.md"), [
+      "---",
+      "id: authored-rank-signal",
+      "title: Authored Rank Signal",
+      "type: design",
+      "trust_tier: authored",
+      "defines: [RankSignal]",
+      "---",
+      "# Authored Rank Signal",
+      "",
+      "## Defines",
+      "",
+      "`RankSignal` is defined here."
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "deprecated.md"), [
+      "---",
+      "id: deprecated-rank-signal",
+      "title: Deprecated Rank Signal",
+      "type: design",
+      "status: deprecated",
+      "trust_tier: authored",
+      "defines: [RankSignal]",
+      "---",
+      "# Deprecated Rank Signal",
+      "",
+      "## Defines",
+      "",
+      "`RankSignal` is defined here."
+    ].join("\n"), "utf8");
+
+    await indexProject(root);
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const results = searchGraph(repository, loadConfig(root), "RankSignal", 3);
+      const byPath = new Map(results.map((result) => [result.document.path, result.score]));
+
+      expect(results[0].document.path).toBe("docs/validated.md");
+      expect(byPath.get("docs/validated.md") ?? 0).toBeGreaterThan(byPath.get("docs/authored.md") ?? 0);
+      expect(byPath.get("docs/authored.md") ?? 0).toBeGreaterThan(byPath.get("docs/deprecated.md") ?? 0);
     } finally {
       repository.close();
     }
@@ -297,6 +489,26 @@ describe("regression coverage", () => {
       const trace = traceNodes(repository, "Redis Cache Design", "AuthService", 6);
       expect(trace.found).toBe(true);
       expect(trace.steps.some((step) => step.edgeKind === "DEPENDS_ON" && step.traversalDirection === "reverse")).toBe(true);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("traces source-ref endpoints and reports max-depth misses", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-trace-source-depth-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const sourceTrace = traceNodes(repository, "AuthService", "src/auth/AuthService.ts", 3);
+      const shallowTrace = traceNodes(repository, "AuthService", "RedisTimeoutError", 1);
+
+      expect(sourceTrace.found).toBe(true);
+      expect(sourceTrace.steps.map((step) => step.edgeKind)).toContain("IMPLEMENTS");
+      expect(shallowTrace.found).toBe(false);
+      expect(shallowTrace.message).toContain("trace depth budget");
     } finally {
       repository.close();
     }

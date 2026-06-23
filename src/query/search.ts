@@ -7,6 +7,16 @@ export interface SearchOptions {
   semantic?: boolean;
 }
 
+export interface SearchExplanation {
+  query: string;
+  limit: number;
+  entityCandidates: string[];
+  ftsQuery: string;
+  semanticEnabled: boolean;
+  matchedEntities: Array<{ name: string; kind: GraphEntity["kind"]; documentFrequency: number }>;
+  results: SearchResult[];
+}
+
 export function searchGraph(
   repository: GraphRepository,
   config: MDGraphConfig,
@@ -77,6 +87,32 @@ export function searchGraph(
   return dedupeResults(results)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+}
+
+export function explainSearchGraph(
+  repository: GraphRepository,
+  config: MDGraphConfig,
+  query: string,
+  limit = config.search.defaultLimit,
+  options: SearchOptions = {}
+): SearchExplanation {
+  const entityCandidates = extractQueryEntityCandidates(query);
+  const matchedEntities = repository.findEntitiesByNormalizedNames(entityCandidates.map(normalizeEntityName));
+  const frequencies = repository.entityDocumentFrequencies(matchedEntities.map((entity) => entity.id));
+  const semanticEnabled = options.semantic ?? config.embedding.enabled;
+  return {
+    query,
+    limit,
+    entityCandidates,
+    ftsQuery: toFtsQuery(query),
+    semanticEnabled,
+    matchedEntities: matchedEntities.map((entity) => ({
+      name: entity.name,
+      kind: entity.kind,
+      documentFrequency: frequencies.get(entity.id) ?? 0
+    })),
+    results: searchGraph(repository, config, query, limit, options)
+  };
 }
 
 export function extractQueryEntityCandidates(query: string): string[] {

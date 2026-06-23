@@ -10,7 +10,7 @@ export { MCPServer, startStdioMcpServer } from "./mcp/server.js";
 export { ToolHandler, tools as mcpTools } from "./mcp/tools.js";
 export { parseMarkdownDocument } from "./parser/markdown-parser.js";
 export { buildContext } from "./query/context-builder.js";
-export { searchGraph } from "./query/search.js";
+export { explainSearchGraph, searchGraph } from "./query/search.js";
 export { traceNodes } from "./query/trace.js";
 export { scanMarkdownFiles } from "./scanner/file-scanner.js";
 export { embedTextLocal } from "./semantic/local-embedding.js";

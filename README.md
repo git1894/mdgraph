@@ -184,7 +184,9 @@ node dist/bin/mdgraph.js status --storage --json        # Counts plus storage di
 node dist/bin/mdgraph.js search "authentication timeout"             # FTS5 + entity search
 node dist/bin/mdgraph.js search "authentication timeout" --semantic   # Include vector search
 node dist/bin/mdgraph.js search "AuthService" --limit 10             # Limit results
+node dist/bin/mdgraph.js search "AuthService" --explain --json       # Query/ranking diagnostics
 node dist/bin/mdgraph.js context "why does RedisTimeoutError affect login"   # Context package
+node dist/bin/mdgraph.js context "why does RedisTimeoutError affect login" --debug --json # Packing diagnostics
 node dist/bin/mdgraph.js node "AuthService"                          # Resolve by name/path/id
 node dist/bin/mdgraph.js node "docs/auth-v2-design.md#session-refresh" # Resolve a section by path anchor
 node dist/bin/mdgraph.js trace "AuthService" "RedisTimeoutError"     # Graph path between two nodes

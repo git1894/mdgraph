@@ -110,6 +110,8 @@ describe("alpha evaluation corpus", () => {
       expect(first?.expected.expectedSourceRefs).toContain("src/cache/redis.ts");
       expect(first?.metrics.budgetFit).toBe(true);
       expect(first?.metrics.reasonCoverage).toBe(true);
+      expect(first?.metrics.fanout.seedNodes).toBeGreaterThan(0);
+      expect(first?.metrics.fanout.visitedNodes).toBeGreaterThanOrEqual(first?.metrics.fanout.seedNodes ?? 0);
 
       for (const result of report.cases) {
         expect(result.query.length).toBeGreaterThan(0);

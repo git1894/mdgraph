@@ -62,7 +62,9 @@ The report is read-oriented observability. It does not change graph edges or doc
 
 When the same document or section is reached by multiple paths, search keeps the highest score while merging the main reasons and matched entities so provenance is not lost.
 
-`buildContext` then starts from ranked search sections, performs bounded graph expansion through non-containment edges, packages selected sections under a character budget, and includes reasons such as FTS hit, semantic hit, exact entity match, or the graph edge traversal path.
+`buildContext` then starts from ranked search sections, performs bounded graph expansion through non-containment edges, orders candidates to preserve cross-document diversity before repeating sections from one document, packages selected sections under a character budget, and includes reasons such as FTS hit, semantic hit, exact entity match, or the graph edge traversal path.
+
+When requested through `context --debug`, context building also reports seed nodes, visited nodes, expanded edges, skipped expansion reasons, candidate counts, and budget truncation counts. These diagnostics are not graph facts; they exist to explain context packing and evaluate retrieval quality.
 
 `traceNodes` performs bounded graph traversal between resolved nodes and returns each step with edge kind, provenance, and confidence.
 

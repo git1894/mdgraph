@@ -18,6 +18,7 @@ try {
   assert(Array.isArray(report.cases), "eval should return case results");
   assert(report.cases.every((item) => item.metrics?.budgetFit === true), "eval cases should report context budget fit");
   assert(report.cases.every((item) => typeof item.metrics?.latencyMs === "number"), "eval cases should report latency metrics");
+  assert(report.cases.every((item) => typeof item.metrics?.fanout?.visitedNodes === "number"), "eval cases should report fanout metrics");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
 }

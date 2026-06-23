@@ -184,7 +184,9 @@ node dist/bin/mdgraph.js status --storage --json        # 计数和存储诊断
 node dist/bin/mdgraph.js search "authentication timeout"             # FTS5 + 实体搜索
 node dist/bin/mdgraph.js search "authentication timeout" --semantic   # 包含向量搜索
 node dist/bin/mdgraph.js search "AuthService" --limit 10             # 限制结果数
+node dist/bin/mdgraph.js search "AuthService" --explain --json       # 查询/排序诊断
 node dist/bin/mdgraph.js context "why does RedisTimeoutError affect login"   # 上下文包
+node dist/bin/mdgraph.js context "why does RedisTimeoutError affect login" --debug --json # 打包诊断
 node dist/bin/mdgraph.js node "AuthService"                          # 按名称/路径/ID 解析
 node dist/bin/mdgraph.js node "docs/auth-v2-design.md#session-refresh" # 按路径锚点解析章节
 node dist/bin/mdgraph.js trace "AuthService" "RedisTimeoutError"     # 两节点间的图谱路径

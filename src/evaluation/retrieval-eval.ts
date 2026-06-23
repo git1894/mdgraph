@@ -42,6 +42,13 @@ export interface EvaluationMetrics {
   latencyMs: number;
   returnedChars: number;
   budgetFit: boolean;
+  fanout: {
+    seedNodes: number;
+    visitedNodes: number;
+    expandedEdges: number;
+    skippedByNodeLimit: number;
+    skippedByDepth: number;
+  };
   reasonCoverage: boolean;
 }
 
@@ -251,7 +258,7 @@ function evaluateCase(
 ): EvaluationCaseResult {
   const start = performance.now();
   const searchResults = searchGraph(repository, config, evaluationCase.query, limit);
-  const context = buildContext(repository, config, evaluationCase.query);
+  const context = buildContext(repository, config, evaluationCase.query, { debug: true });
   const trace = evaluationCase.trace
     ? traceNodes(repository, evaluationCase.trace.from, evaluationCase.trace.to, evaluationCase.trace.depth ?? config.search.maxDepth)
     : undefined;
@@ -327,6 +334,13 @@ function calculateMetrics(input: {
     latencyMs: roundMetric(input.latencyMs),
     returnedChars: input.context.usedChars,
     budgetFit: input.context.usedChars <= input.context.maxChars,
+    fanout: {
+      seedNodes: input.context.debug?.seedNodes ?? 0,
+      visitedNodes: input.context.debug?.visitedNodes ?? 0,
+      expandedEdges: input.context.debug?.expandedEdges ?? 0,
+      skippedByNodeLimit: input.context.debug?.skippedByNodeLimit ?? 0,
+      skippedByDepth: input.context.debug?.skippedByDepth ?? 0
+    },
     reasonCoverage: input.searchResults.every((result) => result.reason.length > 0) && input.context.items.every((item) => item.reason.length > 0)
   };
 }

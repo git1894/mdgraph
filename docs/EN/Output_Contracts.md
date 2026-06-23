@@ -41,6 +41,12 @@ If no index exists, it returns:
 - `content`: selected chunk or section content.
 - `matchedEntities`: graph entity records that contributed to the match.
 
+`mdgraph search <query> --explain --json` returns:
+
+- `query`, `limit`, `entityCandidates`, `ftsQuery`, and `semanticEnabled`.
+- `matchedEntities`: entity names, kinds, and document frequencies used by ranking diagnostics.
+- `results`: the same search result records returned by `search --json`.
+
 ## `context --json`
 
 `mdgraph context <query> --json` returns:
@@ -49,6 +55,13 @@ If no index exists, it returns:
 - `maxChars`: configured context budget.
 - `usedChars`: packed character count.
 - `items`: context items with `path`, `title`, optional `heading`, optional `lines`, `reason`, `matchedEntities`, and `content`.
+
+`mdgraph context <query> --debug --json` keeps the same fields and adds `debug` with:
+
+- `seedNodes`, `visitedNodes`, and `expandedEdges`.
+- `skippedVisitedNodes`, `skippedByNodeLimit`, and `skippedByDepth`.
+- `candidateCount`, `directCandidates`, and `expandedCandidates`.
+- `budgetTruncatedItems` and `budgetSkippedItems`.
 
 ## `node --json`
 
@@ -81,7 +94,7 @@ When no node is found, it returns:
 - `summary`: `cases`, `passed`, `failed`, `averageTopKDocumentRecall`, `averageExpectedSectionRecall`, `averageContextPrecision`, `averageLatencyMs`, and `averageReturnedChars`.
 - `cases`: per-case results with `id`, `query`, `passed`, `expected`, `observed`, and `metrics`.
 
-Per-case `expected` includes expected documents, sections, entities, edge kinds, and source refs. Per-case `observed` includes ranked search document paths, context item paths/headings/reasons, matched entities, resolved entities, resolved source refs, observed edge kinds, and optional trace results. Per-case `metrics` includes top-K document recall, expected-section recall, context precision, entity recall, source-ref recall, edge-kind coverage, trace success, latency, returned characters, budget fit, and reason coverage.
+Per-case `expected` includes expected documents, sections, entities, edge kinds, and source refs. Per-case `observed` includes ranked search document paths, context item paths/headings/reasons, matched entities, resolved entities, resolved source refs, observed edge kinds, and optional trace results. Per-case `metrics` includes top-K document recall, expected-section recall, context precision, entity recall, source-ref recall, edge-kind coverage, trace success, latency, returned characters, budget fit, fanout, and reason coverage.
 
 `mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project.
 

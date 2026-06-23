@@ -36,8 +36,17 @@ function runCleanProjectSmoke() {
   const search = runCliJson(root, ["search", "AuthService", "--limit", "3", "--json"]);
   assert(search.some((item) => item.document?.path === "docs/auth-v2-design.md"), "search should find auth design");
 
+  const searchExplain = runCliJson(root, ["search", "AuthService", "--limit", "3", "--explain", "--json"]);
+  assert(searchExplain.ftsQuery.includes("authservice*"), "search --explain should include the FTS query");
+  assert(searchExplain.matchedEntities.some((item) => item.name === "AuthService"), "search --explain should include matched entities");
+
   const context = runCliJson(root, ["context", "RedisTimeoutError login", "--json"]);
   assert(context.items.some((item) => item.path === "docs/login-flow.md"), "context should include login flow");
+  assertEqual(context.debug, undefined, "context should not include debug details by default");
+
+  const contextDebug = runCliJson(root, ["context", "RedisTimeoutError login", "--debug", "--json"]);
+  assert(contextDebug.debug.visitedNodes > 0, "context --debug should include visited node count");
+  assert(contextDebug.debug.candidateCount >= contextDebug.items.length, "context --debug should include candidate count");
 
   const node = runCliJson(root, ["node", "AuthService", "--json"]);
   assertEqual(node.kind, "entity", "node should resolve AuthService as an entity");

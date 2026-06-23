@@ -19,6 +19,21 @@ export interface ContextResult {
   maxChars: number;
   usedChars: number;
   items: ContextItem[];
+  debug?: ContextDebug;
+}
+
+export interface ContextDebug {
+  seedNodes: number;
+  visitedNodes: number;
+  expandedEdges: number;
+  skippedVisitedNodes: number;
+  skippedByNodeLimit: number;
+  skippedByDepth: number;
+  candidateCount: number;
+  directCandidates: number;
+  expandedCandidates: number;
+  budgetTruncatedItems: number;
+  budgetSkippedItems: number;
 }
 
 interface ContextCandidate extends ContextItem {
@@ -34,30 +49,74 @@ interface ExpansionQueueItem {
   path: string[];
 }
 
-export function buildContext(repository: GraphRepository, config: MDGraphConfig, query: string): ContextResult {
+export interface ContextBuildOptions {
+  debug?: boolean;
+}
+
+interface ContextCollection {
+  candidates: ContextCandidate[];
+  debug: Omit<ContextDebug, "candidateCount" | "directCandidates" | "expandedCandidates" | "budgetTruncatedItems" | "budgetSkippedItems">;
+}
+
+interface PackedContext {
+  result: ContextResult;
+  budgetTruncatedItems: number;
+  budgetSkippedItems: number;
+}
+
+export function buildContext(
+  repository: GraphRepository,
+  config: MDGraphConfig,
+  query: string,
+  options: ContextBuildOptions = {}
+): ContextResult {
   const results = searchGraph(repository, config, query, config.search.defaultLimit * 2);
-  const candidates = collectContextCandidates(repository, config, results);
-  return packContext(query, candidates, config.search.maxContextChars);
+  const collection = collectContextCandidates(repository, config, results);
+  const packed = packContext(query, collection.candidates, config.search.maxContextChars);
+  if (!options.debug) {
+    return packed.result;
+  }
+  return {
+    ...packed.result,
+    debug: {
+      ...collection.debug,
+      candidateCount: collection.candidates.length,
+      directCandidates: collection.candidates.filter((candidate) => candidate.direct).length,
+      expandedCandidates: collection.candidates.filter((candidate) => !candidate.direct).length,
+      budgetTruncatedItems: packed.budgetTruncatedItems,
+      budgetSkippedItems: packed.budgetSkippedItems
+    }
+  };
 }
 
 function collectContextCandidates(
   repository: GraphRepository,
   config: MDGraphConfig,
   results: SearchResult[]
-): ContextCandidate[] {
+): ContextCollection {
   const maxDepth = config.search.maxDepth;
   let remainingExpansionNodes = Math.max(DEFAULT_MAX_CONTEXT_NODES, config.search.defaultLimit * 2);
   const candidates = new Map<string, ContextCandidate>();
   const queue: ExpansionQueueItem[] = [];
   const visited = new Set<string>();
+  const debug = {
+    seedNodes: 0,
+    visitedNodes: 0,
+    expandedEdges: 0,
+    skippedVisitedNodes: 0,
+    skippedByNodeLimit: 0,
+    skippedByDepth: 0
+  };
 
   for (const result of results) {
     addCandidate(candidates, candidateFromSearchResult(result));
     for (const seed of seedsFromSearchResult(result)) {
       if (visited.has(seed.nodeId)) {
+        debug.skippedVisitedNodes += 1;
         continue;
       }
       visited.add(seed.nodeId);
+      debug.seedNodes += 1;
       queue.push({ nodeId: seed.nodeId, depth: 0, score: result.score, path: [] });
     }
   }
@@ -65,6 +124,7 @@ function collectContextCandidates(
   while (queue.length) {
     const current = queue.shift()!;
     if (current.depth >= maxDepth) {
+      debug.skippedByDepth += 1;
       continue;
     }
 
@@ -74,7 +134,12 @@ function collectContextCandidates(
 
     for (const edge of edges) {
       const nextId = edge.fromId === current.nodeId ? edge.toId : edge.fromId;
-      if (visited.has(nextId) || remainingExpansionNodes <= 0) {
+      if (visited.has(nextId)) {
+        debug.skippedVisitedNodes += 1;
+        continue;
+      }
+      if (remainingExpansionNodes <= 0) {
+        debug.skippedByNodeLimit += 1;
         continue;
       }
 
@@ -83,6 +148,7 @@ function collectContextCandidates(
       const score = current.score + edgeScore(edge) - (current.depth + 1) * 2;
       visited.add(nextId);
       remainingExpansionNodes -= 1;
+      debug.expandedEdges += 1;
 
       const row = repository.contextChunkForNode(nextId);
       if (row) {
@@ -106,26 +172,72 @@ function collectContextCandidates(
     queue.sort((left, right) => right.score - left.score);
   }
 
-  return [...candidates.values()].sort((left, right) => {
-    if (left.direct !== right.direct) {
-      return left.direct ? -1 : 1;
+  return {
+    candidates: orderContextCandidates([...candidates.values()]),
+    debug: {
+      ...debug,
+      visitedNodes: visited.size
     }
-    return right.score - left.score;
-  });
+  };
 }
 
-function packContext(query: string, candidates: ContextCandidate[], maxChars: number): ContextResult {
+function orderContextCandidates(candidates: ContextCandidate[]): ContextCandidate[] {
+  return [
+    ...orderContextCandidatesByPath(candidates.filter((candidate) => candidate.direct).sort(compareContextCandidates)),
+    ...orderContextCandidatesByPath(candidates.filter((candidate) => !candidate.direct).sort(compareContextCandidates))
+  ];
+}
+
+function orderContextCandidatesByPath(sorted: ContextCandidate[]): ContextCandidate[] {
+  const byPath = new Map<string, ContextCandidate[]>();
+  for (const candidate of sorted) {
+    byPath.set(candidate.path, [...(byPath.get(candidate.path) ?? []), candidate]);
+  }
+
+  const ordered: ContextCandidate[] = [];
+  while (byPath.size) {
+    for (const [candidatePath, pathCandidates] of byPath) {
+      const [candidate, ...remaining] = pathCandidates;
+      if (candidate) {
+        ordered.push(candidate);
+      }
+      if (remaining.length) {
+        byPath.set(candidatePath, remaining);
+      } else {
+        byPath.delete(candidatePath);
+      }
+    }
+  }
+  return ordered;
+}
+
+function compareContextCandidates(left: ContextCandidate, right: ContextCandidate): number {
+  if (left.direct !== right.direct) {
+    return left.direct ? -1 : 1;
+  }
+  return right.score - left.score;
+}
+
+function packContext(query: string, candidates: ContextCandidate[], maxChars: number): PackedContext {
   const items: ContextItem[] = [];
   let usedChars = 0;
+  let budgetTruncatedItems = 0;
+  let budgetSkippedItems = 0;
 
-  for (const candidate of candidates) {
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
     const remaining = maxChars - usedChars;
     if (remaining <= 0) {
+      budgetSkippedItems += candidates.length - index;
       break;
     }
     const content = trimToBudget(candidate.content, remaining);
     if (!content) {
+      budgetSkippedItems += 1;
       continue;
+    }
+    if (content.length < candidate.content.length) {
+      budgetTruncatedItems += 1;
     }
     usedChars += content.length;
     items.push({
@@ -139,7 +251,7 @@ function packContext(query: string, candidates: ContextCandidate[], maxChars: nu
     });
   }
 
-  return { query, maxChars, usedChars, items };
+  return { result: { query, maxChars, usedChars, items }, budgetTruncatedItems, budgetSkippedItems };
 }
 
 function candidateFromSearchResult(result: SearchResult): ContextCandidate {

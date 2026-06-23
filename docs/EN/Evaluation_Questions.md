@@ -50,6 +50,6 @@ For each question, compare agent behavior with and without MDGraph attached:
 - Whether the answer includes an explainable graph path.
 - Whether the context returned by MDGraph is sufficient without follow-up file inspection.
 - Time and tool-call count for the full agent run.
-- `mdgraph eval` metrics: top-K document recall, expected-section recall, context precision, trace success, latency, returned character count, budget fit, and reason coverage.
+- `mdgraph eval` metrics: top-K document recall, expected-section recall, context precision, trace success, latency, returned character count, budget fit, fanout, and reason coverage.
 
 The current repository has unit, integration, MCP, CLI, semantic, incremental, doctor, and retrieval-evaluation tests, but it has not yet run a real agent A/B benchmark on these questions.
