@@ -6,7 +6,7 @@ import { runDoctor, formatDoctorReport } from "../analysis/doctor.js";
 import { databasePath, initConfig, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeResolution } from "../db/repositories.js";
-import { evaluateRetrieval } from "../evaluation/retrieval-eval.js";
+import { EVALUATION_QUERY_SET_NAMES, evaluateRetrieval } from "../evaluation/retrieval-eval.js";
 import { indexProject } from "../indexer.js";
 import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
@@ -154,12 +154,13 @@ program
   .option("--json", "Print JSON output")
   .option("--path <path>", "Project root to evaluate", process.cwd())
   .option("--limit <number>", "Search results per evaluation case", parseInteger)
-  .action((options: { json?: boolean; path: string; limit?: number }) => {
+  .option("--query-set <name>", `Evaluation query set (${EVALUATION_QUERY_SET_NAMES.join(", ")})`, "alpha")
+  .action((options: { json?: boolean; path: string; limit?: number; querySet: string }) => {
     const projectRoot = validateProjectRoot(options.path);
     const config = loadConfig(projectRoot);
     const repository = openRepository(projectRoot);
     try {
-      const report = evaluateRetrieval(repository, config, { limit: options.limit });
+      const report = evaluateRetrieval(repository, config, { limit: options.limit, querySet: options.querySet });
       printResult(options.json, report, formatEvaluationReport(report));
     } finally {
       closeRepository(repository);

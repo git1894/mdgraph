@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config/load-config.js";
 import { openDatabase } from "../src/db/connection.js";
 import { GraphRepository } from "../src/db/repositories.js";
-import { ALPHA_EVALUATION_CASES, evaluateRetrieval } from "../src/evaluation/retrieval-eval.js";
+import { ALPHA_EVALUATION_CASES, ECC_EVALUATION_CASES, evaluateRetrieval, evaluationCasesForQuerySet } from "../src/evaluation/retrieval-eval.js";
 import { indexProject } from "../src/indexer.js";
 import { runDoctor } from "../src/analysis/doctor.js";
 import { buildContext } from "../src/query/context-builder.js";
@@ -121,5 +121,21 @@ describe("alpha evaluation corpus", () => {
     } finally {
       repository.close();
     }
+  });
+
+  it("defines an ECC path-only query set without copying external corpus content", () => {
+    const cases = evaluationCasesForQuerySet("ecc");
+    const expectedPaths = cases.flatMap((evaluationCase) => evaluationCase.expectedDocuments);
+
+    expect(cases).toHaveLength(ECC_EVALUATION_CASES.length);
+    expect(cases.length).toBeGreaterThan(0);
+    expect(expectedPaths.length).toBeGreaterThan(0);
+    expect(expectedPaths.every((expectedPath) => !path.isAbsolute(expectedPath))).toBe(true);
+    expect(expectedPaths.every((expectedPath) => expectedPath.includes("/") || expectedPath.endsWith(".md"))).toBe(true);
+    expect(cases.every((evaluationCase) => evaluationCase.expectedSections.length === 0)).toBe(true);
+    expect(cases.every((evaluationCase) => evaluationCase.expectedEntities.length === 0)).toBe(true);
+    expect(cases.every((evaluationCase) => evaluationCase.expectedEdges.length === 0)).toBe(true);
+    expect(cases.every((evaluationCase) => evaluationCase.expectedSourceRefs.length === 0)).toBe(true);
+    expect(() => evaluationCasesForQuerySet("missing")).toThrow("Unknown evaluation query set");
   });
 });

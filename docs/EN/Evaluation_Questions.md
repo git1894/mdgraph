@@ -7,9 +7,10 @@ The built-in CLI entry is:
 ```bash
 mdgraph eval --json
 mdgraph eval --path /path/to/project --json
+mdgraph eval --query-set ecc --path /path/to/ecc --json
 ```
 
-`mdgraph eval` currently runs the alpha query set and reports pass/fail plus lightweight retrieval metrics. It is a deterministic engineering smoke check, not a completed IR benchmark or real agent A/B benchmark.
+`mdgraph eval` runs the alpha query set by default and reports pass/fail plus lightweight retrieval metrics. `--query-set ecc` selects path-only expected records for an indexed ECC-style workflow corpus. It is a deterministic engineering smoke check, not a completed IR benchmark or real agent A/B benchmark.
 
 1. Why does a specific error code affect a specific user flow?
 2. Which older decisions does a given design document depend on?
@@ -40,6 +41,10 @@ The repository test fixture `createAlphaFixtureDocs` defines a small reference c
 | 10 | Requirement-to-implementation chain for login | `docs/login-flow.md`, `docs/api/login-api.md`, `docs/auth-v2-design.md`, `docs/redis-cache-design.md`, `docs/adr/adr-001-cache-failure-policy.md` | `Login Flow`, `Login API`, `Session Refresh`, `Timeout Handling`, `Decision` | `LoginFlow`, `GET /api/auth/login`, `AuthService`, `RedisTimeoutError`, `CacheFailurePolicy` | `DEPENDS_ON`, `IMPLEMENTS`, `DEFINES` | `src/routes/auth.ts`, `src/auth/AuthService.ts`, `src/cache/redis.ts` |
 
 The machine-readable expected records live in `src/evaluation/retrieval-eval.ts` and are covered by `__tests__/evaluation.test.ts`.
+
+## ECC Path-Only Expected Records
+
+The `ecc` query set is for external ECC-style workflow corpora. It stores only query text and expected relative Markdown paths such as `CLAUDE.md`, `hooks/README.md`, `commands/quality-gate.md`, `legacy-command-shims/README.md`, `docs/ECC-2.0-SESSION-ADAPTER-DISCOVERY.md`, `docs/SELECTIVE-INSTALL-ARCHITECTURE.md`, `docs/security/supply-chain-incident-response.md`, and `contexts/review.md`. It intentionally leaves expected sections, entities, edges, and source refs empty until there is a stable content-free section-anchor baseline for that external corpus.
 
 ## Measurement Notes
 

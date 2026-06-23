@@ -88,6 +88,9 @@ export interface EvaluationReport {
   cases: EvaluationCaseResult[];
 }
 
+export const EVALUATION_QUERY_SET_NAMES = ["alpha", "ecc"] as const;
+export type EvaluationQuerySet = typeof EVALUATION_QUERY_SET_NAMES[number];
+
 export const ALPHA_EVALUATION_CASES: EvaluationCase[] = [
   {
     id: "alpha-1",
@@ -233,20 +236,87 @@ export const ALPHA_EVALUATION_CASES: EvaluationCase[] = [
   }
 ];
 
+export const ECC_EVALUATION_CASES: EvaluationCase[] = [
+  pathOnlyCase(
+    "ecc-1",
+    "CLAUDE.md Project Overview Key Commands Development Notes",
+    ["CLAUDE.md"]
+  ),
+  pathOnlyCase(
+    "ecc-2",
+    "hooks.json memory persistence SessionStart PreCompact observation activity tracking SessionEnd",
+    ["hooks/README.md"]
+  ),
+  pathOnlyCase(
+    "ecc-3",
+    "legacy command shims tdd eval verify migration compatibility canonical skills",
+    ["legacy-command-shims/README.md"]
+  ),
+  pathOnlyCase(
+    "ecc-4",
+    "ECC 2.0 Session Adapter Discovery passthrough native projection adapter",
+    ["docs/ECC-2.0-SESSION-ADAPTER-DISCOVERY.md"]
+  ),
+  pathOnlyCase(
+    "ecc-5",
+    "selective install architecture manifest install plan apply target component modules",
+    ["docs/SELECTIVE-INSTALL-ARCHITECTURE.md"]
+  ),
+  pathOnlyCase(
+    "ecc-6",
+    "Supply Chain Incident Response security secrets AgentShield",
+    ["docs/security/supply-chain-incident-response.md"]
+  ),
+  pathOnlyCase(
+    "ecc-7",
+    "Quality Gate Command post quality gate hook formatter",
+    ["commands/quality-gate.md"]
+  ),
+  pathOnlyCase(
+    "ecc-8",
+    "review context code review security performance test coverage",
+    ["contexts/review.md"]
+  )
+];
+
+export function evaluationCasesForQuerySet(querySet: string): EvaluationCase[] {
+  switch (querySet) {
+    case "alpha":
+      return ALPHA_EVALUATION_CASES;
+    case "ecc":
+      return ECC_EVALUATION_CASES;
+    default:
+      throw new Error(`Unknown evaluation query set: ${querySet}. Expected one of: ${EVALUATION_QUERY_SET_NAMES.join(", ")}.`);
+  }
+}
+
 export function evaluateRetrieval(
   repository: GraphRepository,
   config: MDGraphConfig,
   options: { cases?: EvaluationCase[]; limit?: number; querySet?: string } = {}
 ): EvaluationReport {
-  const cases = options.cases ?? ALPHA_EVALUATION_CASES;
+  const querySet = options.querySet ?? "alpha";
+  const cases = options.cases ?? evaluationCasesForQuerySet(querySet);
   const limit = options.limit ?? config.search.defaultLimit;
   const results = cases.map((evaluationCase) => evaluateCase(repository, config, evaluationCase, limit));
   return {
-    querySet: options.querySet ?? "alpha",
+    querySet,
     limit,
     generatedAt: new Date().toISOString(),
     summary: summarize(results),
     cases: results
+  };
+}
+
+function pathOnlyCase(id: string, query: string, expectedDocuments: string[]): EvaluationCase {
+  return {
+    id,
+    query,
+    expectedDocuments,
+    expectedSections: [],
+    expectedEntities: [],
+    expectedEdges: [],
+    expectedSourceRefs: []
   };
 }
 

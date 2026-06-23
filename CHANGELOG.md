@@ -9,6 +9,7 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 ### Added
 
 - Added `mdgraph eval` for the built-in alpha retrieval evaluation set, reporting per-case expected records and lightweight search/context/trace metrics.
+- Added `mdgraph eval --query-set ecc` with path-only expected records for ECC-style external workflow corpora.
 - Added `mdgraph search --explain` and `mdgraph context --debug` for explicit retrieval diagnostics without changing default outputs.
 - Added `npm run smoke:eval` to validate the built CLI evaluation path against a temporary alpha-style corpus.
 - Added diversity-aware context packing coverage to reduce repeated sections from one document under tight budgets.

@@ -19,6 +19,14 @@ try {
   assert(report.cases.every((item) => item.metrics?.budgetFit === true), "eval cases should report context budget fit");
   assert(report.cases.every((item) => typeof item.metrics?.latencyMs === "number"), "eval cases should report latency metrics");
   assert(report.cases.every((item) => typeof item.metrics?.fanout?.visitedNodes === "number"), "eval cases should report fanout metrics");
+
+  const eccReport = runCliJson(root, ["eval", "--query-set", "ecc", "--json"]);
+  assertEqual(eccReport.querySet, "ecc", "eval should support the ECC query set");
+  assert(eccReport.cases.length > 0, "ECC eval should include path-only cases");
+  assert(
+    eccReport.cases.every((item) => item.expected?.expectedSections?.length === 0),
+    "ECC eval smoke should not require copied external sections"
+  );
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
 }

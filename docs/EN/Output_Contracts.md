@@ -88,7 +88,7 @@ When no node is found, it returns:
 
 `mdgraph eval --json` runs the built-in alpha retrieval evaluation cases against an indexed project and returns:
 
-- `querySet`: currently `alpha`.
+- `querySet`: `alpha` by default, or `ecc` when `--query-set ecc` is provided.
 - `limit`: search result limit used per case.
 - `generatedAt`: ISO timestamp for the evaluation run.
 - `summary`: `cases`, `passed`, `failed`, `averageTopKDocumentRecall`, `averageExpectedSectionRecall`, `averageContextPrecision`, `averageLatencyMs`, and `averageReturnedChars`.
@@ -96,7 +96,7 @@ When no node is found, it returns:
 
 Per-case `expected` includes expected documents, sections, entities, edge kinds, and source refs. Per-case `observed` includes ranked search document paths, context item paths/headings/reasons, matched entities, resolved entities, resolved source refs, observed edge kinds, and optional trace results. Per-case `metrics` includes top-K document recall, expected-section recall, context precision, entity recall, source-ref recall, edge-kind coverage, trace success, latency, returned characters, budget fit, fanout, and reason coverage.
 
-`mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project.
+`mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project. `mdgraph eval --query-set ecc --path <project> --json` uses ECC-style path-only expected records so an external workflow corpus can be scored without copying its document content into MDGraph fixtures.
 
 ## `doctor --json`
 

@@ -196,6 +196,7 @@ node dist/bin/mdgraph.js trace "AuthService" "RedisTimeoutError" --depth 8  # Cu
 node dist/bin/mdgraph.js eval                              # Run built-in alpha retrieval evaluation
 node dist/bin/mdgraph.js eval --json                       # Machine-readable metrics
 node dist/bin/mdgraph.js eval --path /your/project --json  # Evaluate an explicit indexed project
+node dist/bin/mdgraph.js eval --query-set ecc --path /path/to/ecc --json # ECC path-only expected records
 
 # MCP Server
 node dist/bin/mdgraph.js serve --mcp                       # Start stdio MCP server
@@ -216,7 +217,7 @@ node dist/bin/mdgraph.js help                              # All commands
 node dist/bin/mdgraph.js help search                       # Command-specific help
 ```
 
-All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality; it is a deterministic smoke check, not a real agent A/B benchmark. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
+All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
 
 ---
 
