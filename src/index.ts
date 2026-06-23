@@ -1,0 +1,17 @@
+export { DEFAULT_CONFIG, configPath, databasePath, initConfig, loadConfig } from "./config/load-config.js";
+export { runDoctor, formatDoctorReport } from "./analysis/doctor.js";
+export { openDatabase } from "./db/connection.js";
+export { GraphRepository } from "./db/repositories.js";
+export { buildGraphRecords } from "./extraction/graph-builder.js";
+export { extractEntities } from "./extraction/entity-extractor.js";
+export { indexProject } from "./indexer.js";
+export { MCPServer, startStdioMcpServer } from "./mcp/server.js";
+export { ToolHandler, tools as mcpTools } from "./mcp/tools.js";
+export { parseMarkdownDocument } from "./parser/markdown-parser.js";
+export { buildContext } from "./query/context-builder.js";
+export { searchGraph } from "./query/search.js";
+export { traceNodes } from "./query/trace.js";
+export { scanMarkdownFiles } from "./scanner/file-scanner.js";
+export { embedTextLocal } from "./semantic/local-embedding.js";
+export { watchProject } from "./watcher/file-watcher.js";
+export * from "./types.js";

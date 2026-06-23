@@ -1,0 +1,322 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { DEFAULT_CONFIG, loadConfig } from "../src/config/load-config.js";
+import { openDatabase, openExistingDatabase } from "../src/db/connection.js";
+import { GraphRepository } from "../src/db/repositories.js";
+import { indexProject } from "../src/indexer.js";
+import { buildContext } from "../src/query/context-builder.js";
+import { searchGraph } from "../src/query/search.js";
+import { traceNodes } from "../src/query/trace.js";
+import type { MDGraphConfig } from "../src/types.js";
+import { stableId } from "../src/utils/id.js";
+import { createFixtureDocs } from "./fixtures.js";
+
+let tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  tempDirs = [];
+});
+
+describe("regression coverage", () => {
+  it("preserves inbound document links when only the target document changes", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-inbound-edge-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "a.md"), "# A\n\nSee [B](./b.md).\n", "utf8");
+    fs.writeFileSync(path.join(docsDir, "b.md"), "# B\n\nInitial.\n", "utf8");
+
+    await indexProject(root);
+    expect(countEdges(root, "LINKS_TO")).toBe(1);
+
+    fs.appendFileSync(path.join(docsDir, "b.md"), "\nMore detail.\n", "utf8");
+    await indexProject(root);
+    expect(countEdges(root, "LINKS_TO")).toBe(1);
+
+    fs.rmSync(path.join(docsDir, "b.md"));
+    await indexProject(root);
+    expect(countEdges(root, "LINKS_TO")).toBe(0);
+  });
+
+  it("replaces the old document id when frontmatter id changes on the same path", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-id-change-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    const docPath = path.join(docsDir, "design.md");
+    fs.writeFileSync(docPath, [
+      "---",
+      "id: old-design",
+      "title: Design",
+      "defines: [OldEntity]",
+      "---",
+      "# Design",
+      ""
+    ].join("\n"), "utf8");
+
+    await indexProject(root);
+    fs.writeFileSync(docPath, [
+      "---",
+      "id: new-design",
+      "title: Design",
+      "defines: [NewEntity]",
+      "---",
+      "# Design",
+      ""
+    ].join("\n"), "utf8");
+
+    const result = await indexProject(root);
+    expect(result.changed).toBe(1);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      expect(repository.getNode(stableId("document", "old-design"))).toBeUndefined();
+      expect(repository.getNode(stableId("document", "new-design"))?.kind).toBe("document");
+      expect(repository.resolveNode("OldEntity")).toBeUndefined();
+      expect(repository.resolveNode("NewEntity")?.kind).toBe("entity");
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("does not pass unsafe hyphenated input directly to FTS5", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-fts-special-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const config = loadConfig(root);
+      const results = searchGraph(repository, config, "auth-v2", 5);
+      expect(results.some((result) => result.document.path.endsWith("auth-v2-design.md"))).toBe(true);
+      expect(() => searchGraph(repository, config, "redis.lock.ttl AUTH-401", 5)).not.toThrow();
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("migrates legacy chunk FTS tables to external-content storage", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-fts-migration-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const legacyDb = openDatabase(root);
+    try {
+      legacyDb.exec(`
+        DROP TABLE chunks_fts;
+        CREATE VIRTUAL TABLE chunks_fts USING fts5(
+          content,
+          document_id UNINDEXED,
+          section_id UNINDEXED,
+          chunk_id UNINDEXED,
+          tokenize = 'unicode61'
+        );
+        INSERT INTO chunks_fts (content, document_id, section_id, chunk_id)
+        SELECT content, document_id, section_id, id FROM chunks;
+      `);
+    } finally {
+      legacyDb.close();
+    }
+
+    const migratedDb = openExistingDatabase(root);
+    try {
+      const ftsSchema = migratedDb.prepare("SELECT sql FROM sqlite_schema WHERE name = 'chunks_fts'").get() as { sql: string };
+      const contentTables = migratedDb.prepare("SELECT name FROM sqlite_schema WHERE name = 'chunks_fts_content'").all();
+      const rows = migratedDb.prepare(`
+        SELECT c.id
+        FROM chunks_fts
+        JOIN chunks c ON c.rowid = chunks_fts.rowid
+        WHERE chunks_fts MATCH ?
+      `).all("authservice");
+
+      expect(ftsSchema.sql).toMatch(/content\s*=\s*'chunks'/i);
+      expect(ftsSchema.sql).toMatch(/content_rowid\s*=\s*'rowid'/i);
+      expect(contentTables).toHaveLength(0);
+      expect(rows.length).toBeGreaterThan(0);
+    } finally {
+      migratedDb.close();
+    }
+  });
+
+  it("removes external FTS terms when a document is deleted incrementally", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-fts-delete-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    const docPath = path.join(docsDir, "doomed.md");
+    fs.writeFileSync(docPath, "# Doomed\n\nUniqueGoneToken appears only here.\n", "utf8");
+
+    await indexProject(root);
+    expect(ftsMatchCount(root, "uniquegonetoken")).toBe(1);
+
+    fs.rmSync(docPath);
+    await indexProject(root);
+
+    expect(ftsMatchCount(root, "uniquegonetoken")).toBe(0);
+  });
+
+  it("keeps context content inside small character budgets", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-context-budget-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const config: MDGraphConfig = {
+        ...DEFAULT_CONFIG,
+        search: { ...DEFAULT_CONFIG.search, maxContextChars: 80 }
+      };
+      const context = buildContext(repository, config, "AuthService RedisTimeoutError");
+      expect(context.usedChars).toBeLessThanOrEqual(context.maxChars);
+      expect(context.items.length).toBeGreaterThan(0);
+      expect(context.items.reduce((sum, item) => sum + item.content.length, 0)).toBe(context.usedChars);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("includes graph-expanded dependency context with an explanatory path", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-context-expansion-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const context = buildContext(repository, DEFAULT_CONFIG, "AuthService");
+      const dependency = context.items.find((item) => item.path === "docs/redis-cache-design.md");
+
+      expect(dependency).toBeDefined();
+      expect(dependency?.reason).toContain("graph expansion");
+      expect(dependency?.reason).toContain("DEPENDS_ON");
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("down-ranks high-frequency entity matches according to the configured threshold", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-high-frequency-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    for (const name of ["one", "two", "three"]) {
+      fs.writeFileSync(path.join(docsDir, `${name}.md`), `# ${name}\n\n\`CommonThing\` appears here.\n`, "utf8");
+    }
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const highThreshold: MDGraphConfig = {
+        ...DEFAULT_CONFIG,
+        search: { ...DEFAULT_CONFIG.search, highFrequencyEntityThreshold: 10 }
+      };
+      const lowThreshold: MDGraphConfig = {
+        ...DEFAULT_CONFIG,
+        search: { ...DEFAULT_CONFIG.search, highFrequencyEntityThreshold: 1 }
+      };
+      const unpenalized = searchGraph(repository, highThreshold, "CommonThing", 1);
+      const penalized = searchGraph(repository, lowThreshold, "CommonThing", 1);
+
+      expect(penalized[0].score).toBeLessThan(unpenalized[0].score);
+      expect(penalized[0].reason).toContain("down-ranked high-frequency entity match");
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("preserves multiple search explanations when deduping the same section", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-search-dedupe-reasons-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "auth.md"), [
+      "# Auth Design",
+      "",
+      "## Defines",
+      "",
+      "- `AuthService`: AuthService handles login refresh.",
+      ""
+    ].join("\n"), "utf8");
+
+    await indexProject(root);
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const results = searchGraph(repository, loadConfig(root), "AuthService", 5);
+      const authResult = results.find((result) => result.section?.heading === "Defines");
+
+      expect(authResult?.reason).toContain("definition");
+      expect(authResult?.reason).toContain("FTS5 content match");
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("resolves sections by path anchor and distinguishes ambiguous heading queries", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-repo-node-section-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "one.md"), "# One\n\n## Runtime\nFirst runtime.\n", "utf8");
+    fs.writeFileSync(path.join(docsDir, "two.md"), "# Two\n\n## Runtime\nSecond runtime.\n", "utf8");
+
+    await indexProject(root);
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const section = repository.resolveNodeDetailed("docs/one.md#runtime");
+      const ambiguous = repository.resolveNodeDetailed("Runtime");
+
+      expect(section.status).toBe("found");
+      expect(section.node.kind).toBe("section");
+      expect(section.node.data.anchor).toBe("runtime");
+      expect(ambiguous.status).toBe("ambiguous");
+      expect(ambiguous.error).toBe("ambiguous_section");
+      expect(ambiguous.candidates.map((candidate: { documentPath: string }) => candidate.documentPath).sort()).toEqual(["docs/one.md", "docs/two.md"]);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("marks reverse traversal in trace steps", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-trace-direction-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const trace = traceNodes(repository, "Redis Cache Design", "AuthService", 6);
+      expect(trace.found).toBe(true);
+      expect(trace.steps.some((step) => step.edgeKind === "DEPENDS_ON" && step.traversalDirection === "reverse")).toBe(true);
+    } finally {
+      repository.close();
+    }
+  });
+});
+
+function countEdges(root: string, kind: string): number {
+  const db = openDatabase(root);
+  try {
+    const row = db.prepare("SELECT count(*) AS count FROM edges WHERE kind = ?").get(kind) as { count: number };
+    return row.count;
+  } finally {
+    db.close();
+  }
+}
+
+function ftsMatchCount(root: string, query: string): number {
+  const db = openDatabase(root);
+  try {
+    const row = db.prepare("SELECT count(*) AS count FROM chunks_fts WHERE chunks_fts MATCH ?").get(query) as { count: number };
+    return row.count;
+  } finally {
+    db.close();
+  }
+}

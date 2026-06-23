@@ -1,0 +1,48 @@
+# MDGraph 发布清单
+
+在发布 MDGraph 或请求维护者切 release 前使用此清单。它补充 `CHANGELOG-ZH.md`、[Output_Contracts.md](Output_Contracts.md)、[Alpha_Results.md](Alpha_Results.md) 和 [docs/tasks/README.md](../tasks/README.md) 中的 task public check。
+
+## 公开检查
+
+- 确认 `package.json` 版本和 CLI `program.version(...)` 一致。
+- 确认 `CHANGELOG-ZH.md` 已包含本次发布条目。
+- 当公开 CLI/MCP 行为变化时，复查 README quick start、运行要求、MCP setup、输出契约和已知 tradeoff。
+- 当 parser、scanner、storage、query、MCP 或 doctor 行为对外部语料产生实质变化时，刷新 [Alpha_Results.md](Alpha_Results.md)。
+
+## 命令门槛
+
+安装依赖后，从仓库根目录运行：
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run smoke:cli
+npm run smoke:pack
+node dist/bin/mdgraph.js index --json
+node dist/bin/mdgraph.js doctor --strict --json
+node dist/bin/mdgraph.js status --storage --json
+npm run task:public-check
+git diff --check
+```
+
+预期结果：
+
+- Typecheck、tests、build、CLI smoke 和 pack smoke 均以 0 退出。
+- `doctor --strict --json` 对 MDGraph 仓库报告 `staleIndex: 0`，且没有问题计数。
+- `status --storage --json` 返回 `{ counts, storage }`，并包含 database、object、path group、edge kind、high-degree node 和 vector 信息。
+- `task:public-check` 不应发现 `docs/tasks/` 下除允许公开文件外的已跟踪任务工件。
+- `git diff --check` 干净。Windows CRLF 文件如出现未改动行尾误报，可设置仓库本地 `core.whitespace=cr-at-eol`。
+
+## Package 门槛
+
+- 如果 package metadata 变化，使用 `npm pack --dry-run` 检查 tarball 内容。
+- 确认 package 包含 `dist`、`README.md`、`CHANGELOG.md` 和 `LICENSE`。
+- 确认 package 不包含 `.mdgraph/`、任务工件目录、临时输出、本地数据库或外部工作区内容。
+
+## Release notes 文案
+
+- 总结用户可见的 CLI/MCP 行为变化。
+- 明确指出输出契约变化。
+- 仅把已知 `node:sqlite` experimental warning 描述为非失败运行时 warning。
+- 将外部 alpha warning 与 MDGraph 仓库发布阻塞项分开。

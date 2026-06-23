@@ -1,0 +1,58 @@
+{
+  "name": "mdgraph",
+  "version": "0.1.0",
+  "description": "Local-first Markdown document graph for AI coding workflows.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/git1894/mdgraph.git"
+  },
+  "bugs": {
+    "url": "https://github.com/git1894/mdgraph/issues"
+  },
+  "homepage": "https://github.com/git1894/mdgraph#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "mdgraph": "dist/bin/mdgraph.js"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/assets.mjs",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prepack": "npm run build",
+    "smoke:cli": "node scripts/smoke-cli.mjs",
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "task:check": "node scripts/task-tools.mjs check",
+    "task:new": "node scripts/task-tools.mjs new",
+    "task:public-check": "node scripts/task-tools.mjs public-check",
+    "task:smoke": "node scripts/task-tools.mjs smoke",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "commander": "^12.1.0",
+    "fast-glob": "^3.3.3",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.6"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

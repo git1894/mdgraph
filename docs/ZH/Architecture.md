@@ -1,0 +1,79 @@
+# MDGraph 架构
+
+MDGraph 采用以下已实现的流水线：扫描器 → 解析器 → 提取/解析器 → SQLite 存储 → 查询引擎 → CLI/MCP。
+
+## 模块映射
+
+| 区域 | 路径 | 职责 |
+|---|---|---|
+| CLI | `src/bin/mdgraph.ts` | init、index、status、search、context、node、trace、serve、watch 和 doctor 命令。 |
+| 配置 | `src/config/load-config.ts` | 默认配置、`.mdgraph/config.json` 创建和安全配置合并。 |
+| 扫描器 | `src/scanner/file-scanner.ts` | 使用 include/exclude 通配符和最大文件大小限制查找 Markdown 文件。 |
+| 解析器 | `src/parser/*` | 前置元数据、Markdown AST、标题、代码块、行内代码、Markdown 链接和 WikiLink。 |
+| 提取 | `src/extraction/*` | 将解析后的文档转换为图记录和确定性的实体/边信号。 |
+| 解析 | `src/resolution/link-resolver.ts` | 将 Markdown 和 WikiLink 目标解析为已索引的文档或章节。 |
+| 存储 | `src/db/*` | SQLite 连接、模式、记录替换、增量更新、图查询和存储诊断。 |
+| 查询 | `src/query/*` | 搜索排序、上下文打包和图追踪。 |
+| 语义 | `src/semantic/local-embedding.ts` | 确定性本地向量生成和余弦评分。 |
+| MCP | `src/mcp/*` | 基于换行符分隔的 JSON-RPC MCP 服务器和工具处理器。 |
+| 监听 | `src/watcher/file-watcher.ts` | 通过 chokidar 实现防抖增量重新索引。 |
+| 分析 | `src/analysis/doctor.ts` | 文档健康和治理报告。 |
+
+## 数据模型
+
+SQLite 数据库存储在 `.mdgraph/graph.db`，由 `src/db/schema.sql` 创建。
+
+主要记录：
+
+- `documents`：每篇 Markdown 文档一行，包含路径、哈希值、状态、类型、信任层级和元数据。
+- `sections`：标题边界的文档区域，带有锚点和源行范围。章节内容在下一个任意层级标题前结束；父子上下文通过图关系恢复，而不是在 chunk 文本中重复。
+- `entities`：符号、API 路由、错误码、配置键、文件路径、命令、包和概念。
+- `source_refs`：文档引用的源/配置/脚本路径。
+- `edges`：图关系，包含类型、置信度、权重、来源和元数据。
+- `chunks`：由章节内容生成、用于搜索和上下文打包的文本块。
+- `chunks_fts`：用于关键词搜索的 FTS5 索引。
+- `chunk_vectors`：按块键控的可选本地语义向量。
+
+## 索引流程
+
+1. `scanMarkdownFiles` 从配置中选择候选 Markdown 文件。
+2. `parseMarkdownDocument` 读取前置元数据和 Markdown 结构。
+3. `buildGraphRecords` 创建文档、章节、实体、源引用、块、向量和边。
+4. `GraphRepository.replaceAll` 写入完整重建，或 `replaceDocuments` 更新已更改/已删除的文档。
+5. `indexProject` 比较存储的哈希值与解析后的哈希值，选择全量或增量模式。
+
+增量模式会删除已更改和已移除文件的文档派生记录，移除对应 FTS 词项，重新插入已更改的记录，并在清理后修剪未引用的全局实体/源引用。完整重建会 optimize 并 vacuum SQLite 数据库，避免旧 FTS 页面和已删除行继续放大磁盘文件。
+
+## 存储诊断
+
+`GraphRepository.storageDiagnostics` 支撑 `mdgraph status --storage`。它报告 SQLite 页数、freelist、journal/WAL checkpoint 状态、`dbstat` 可用时的表/索引/FTS shadow 对象大小、按路径分组的内容贡献、边类型分布、高度数节点和向量 provider 计数。
+
+该报告是只读可观察性信息。它不会改变图边，也不会变成 doctor warning。当存储增长异常时，用户应先检查 include/exclude globs 以及生成物、依赖和临时目录；需要重建并通过 `VACUUM` 压缩文件时运行 `mdgraph index --full`。
+
+## 查询流程
+
+`searchGraph` 结合并去重以下内容：
+
+- FTS5 块命中。
+- 精确实体匹配。
+- 可选的本地语义向量匹配。
+- 匹配实体周围的图邻居。
+
+当同一文档或章节通过多条路径命中时，搜索保留最高分，同时合并主要命中原因和匹配实体，避免丢失来源解释。
+
+然后 `buildContext` 从排序后的搜索章节开始，通过非包含边执行有界图扩展，在字符预算下打包选定的章节，并包含原因，如 FTS 命中、语义命中、精确实体匹配或图边遍历路径。
+
+`traceNodes` 在执行节点之间的有界图遍历，并返回每一步的边类型、来源和置信度。
+
+## MCP 边界
+
+MCP 服务器有意仅暴露五个工具。工具输出以文本为主且兼容 JSON，以便代理可以直接使用，无需先检查 SQLite 数据库或读取原始文件。
+
+## 当前权衡
+
+- 语义提供者是确定性的和本地的，但它是轻量级的哈希嵌入，而非高质量的语言模型嵌入。
+- 监听模式在文件更改时更新 SQLite；长时间运行的 MCP 新鲜度通过每次调用时工具打开当前数据库状态来实现。
+- Doctor 检查是基于规则的警告。它们会先比较当前文件与索引中的文档 hash 和 id；陈旧索引会返回只读的新鲜度诊断，而不是混合时态的健康结论。
+- 存储诊断通过 `status --storage` 暴露；它们不是图事实，也不会扩展 MCP 工具面。
+- `SAME_AS`、`RELATED_TO` 和 `CONTRADICTS` 是公共模型中保留的边类型。确定性 MVP 在索引期间不发出这些类型；类似矛盾的信号目前由 `doctor` 报告，而不是作为图边插入。
+- 当前实现优先考虑紧凑的 MVP，而非广泛的 Markdown/MDX 方言支持。
