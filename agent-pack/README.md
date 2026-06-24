@@ -22,3 +22,5 @@ This pack contains reusable guidance for MCP-capable coding agents. It keeps hos
 | Generic MCP client | Import the MCP config and instruction text directly. |
 
 Replace `/absolute/path/to/mdgraph/dist/bin/mdgraph.js` and `/absolute/path/to/project` in `mcp-config.example.json` before use.
+
+For scoped file-read comparison case notes, see `docs/EN/Agent_File_Read_Comparison.md` in the packaged artifact or repository.

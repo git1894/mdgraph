@@ -97,4 +97,4 @@ Documentation health check:
 - MDGraph indexes Markdown documents, not source ASTs or arbitrary files.
 - The MCP surface intentionally stays at five tools: search, context, node, trace, and status.
 - The current budget control is character-based through project config, context packing, and MCP `maxChars`. Token-specific host budgets should be handled by the agent or client.
-- Real agent A/B file-read comparisons are not yet recorded; `mdgraph eval` is a deterministic retrieval smoke check, not a substitute for those studies.
+- Scoped file-read comparison case notes are recorded in [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md), but a full real-agent A/B benchmark has not been run yet.

@@ -248,6 +248,7 @@ MDGraph's MCP server delivers the following guidance to your agent automatically
 - **Prefer returned context directly** when it includes enough content and reasons. Only read files when MDGraph is unavailable or the returned context is clearly insufficient.
 
 For host-specific setup notes and the shared instruction template, see [Agent_Integration.md](docs/EN/Agent_Integration.md).
+Scoped file-read comparison case notes are recorded in [Agent_File_Read_Comparison.md](docs/EN/Agent_File_Read_Comparison.md).
 Reusable instructions, MCP config, and prompt templates are packaged in [agent-pack/](agent-pack/).
 
 ---

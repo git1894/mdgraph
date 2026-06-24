@@ -6,11 +6,14 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.3.0 - 2026-06-24
+
 ### Added
 
 - Added initial 0.3 agent integration guidance with a shared instruction template, host setup notes, and query-first/file-read-second workflows.
 - Added MCP `mdgraph_context` support for `knownFiles`, `maxChars`, and deterministic `suggestedNextQueries` in structured context results.
 - Added a packaged `agent-pack/` with reusable instructions, host examples, MCP configuration, and prompt templates for MCP-capable coding agents.
+- Added scoped agent file-read comparison case notes for alpha and ECC documentation workflows.
 
 ### Changed
 

@@ -97,4 +97,4 @@ Task-start documentation brief：
 - MDGraph 索引 Markdown 文档，不索引源码 AST 或任意文件。
 - MCP surface 故意保持五个工具：search、context、node、trace、status。
 - 当前预算控制是通过项目配置、context packing 和 MCP `maxChars` 实现的字符预算；宿主侧 token budget 仍应由 agent 或 client 处理。
-- 真实 agent A/B file-read 对比案例尚未记录；`mdgraph eval` 是确定性检索 smoke check，不能替代这类实验。
+- 有限范围的 file-read 对比案例记录在 [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md)，但完整真实 agent A/B benchmark 尚未运行。

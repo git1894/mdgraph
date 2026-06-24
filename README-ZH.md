@@ -248,6 +248,7 @@ MDGraph 的 MCP 服务器会自动向你的代理传递以下指引：
 - **当返回的上下文内容足够且包含原因时，优先直接使用它**。仅在 MDGraph 不可用或返回的上下文明显不足时再读取文件。
 
 宿主配置说明和共享 instruction template 见 [Agent_Integration.md](docs/ZH/Agent_Integration.md)。
+有限范围的 file-read 对比案例记录见 [Agent_File_Read_Comparison.md](docs/ZH/Agent_File_Read_Comparison.md)。
 可复用 instructions、MCP config 和 prompt templates 随 [agent-pack/](agent-pack/) 一起发布。
 
 ---
