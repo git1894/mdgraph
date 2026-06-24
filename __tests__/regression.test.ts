@@ -187,6 +187,29 @@ describe("regression coverage", () => {
     }
   });
 
+  it("uses known files as context seeds for task-start briefs", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-context-known-files-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const repository = new GraphRepository(openDatabase(root));
+    try {
+      const context = buildContext(repository, DEFAULT_CONFIG, "unrelated task text", {
+        knownFiles: ["src/auth/AuthService.ts"],
+        maxChars: 120
+      });
+
+      expect(context.maxChars).toBe(120);
+      expect(context.usedChars).toBeLessThanOrEqual(120);
+      expect(context.knownFiles).toEqual(["src/auth/AuthService.ts"]);
+      expect(context.items.some((item) => item.path === "docs/auth-v2-design.md")).toBe(true);
+      expect(context.suggestedNextQueries?.some((query) => query.includes("src/auth/AuthService.ts"))).toBe(true);
+    } finally {
+      repository.close();
+    }
+  });
+
   it("orders context across documents before repeating sections from one document", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-context-diversity-"));
     tempDirs.push(root);

@@ -7,13 +7,13 @@ This guide is the shared 0.3 integration contract for coding agents. Host-specif
 Use MDGraph as an invited documentation context layer, not as hidden memory and not as a source-code graph.
 
 1. Check `mdgraph_status` when you are not sure whether the workspace is indexed.
-2. Use `mdgraph_context` for cross-document questions about designs, ADRs, runbooks, API docs, source references, incidents, or feature chains.
+2. Use `mdgraph_context` for cross-document questions about designs, ADRs, runbooks, API docs, source references, incidents, or feature chains. Pass MCP `knownFiles` when the task already names relevant project-relative docs or source paths, and `maxChars` when the agent has a tight context budget.
 3. Use `mdgraph_search` for quick keyword, entity, path, command, config key, API route, or error-code lookup.
 4. Use `mdgraph_node` when you already know a document path, section anchor, entity name, source path, or graph id.
 5. Use `mdgraph_trace` for relationship questions such as how a design depends on an ADR or how a source path connects to a runbook.
 6. Read raw files only when the index is unavailable, the returned context is insufficient, exact neighboring prose is required, or the user explicitly asks for file-level inspection.
 
-For coding tasks, include the task text and any known file paths in the `mdgraph_context` query. This gives MDGraph enough signal to return a task-start documentation brief with relevant docs, source refs, provenance, and follow-up targets.
+For coding tasks, include the task text in the `mdgraph_context` query and pass any known file paths through `knownFiles`. This gives MDGraph enough signal to return a task-start documentation brief with relevant docs, source refs, provenance, and deterministic `suggestedNextQueries`.
 
 ## Shared Instruction Template
 
@@ -21,7 +21,7 @@ For coding tasks, include the task text and any known file paths in the `mdgraph
 Use MDGraph before reading multiple Markdown files manually.
 
 - Start with mdgraph_status if index availability is unclear.
-- Use mdgraph_context for cross-document design, ADR, runbook, API, incident, source-ref, or feature-chain questions.
+- Use mdgraph_context for cross-document design, ADR, runbook, API, incident, source-ref, or feature-chain questions. Include knownFiles and maxChars when the host supports MCP arguments.
 - Use mdgraph_search for quick keyword/entity/path lookup.
 - Use mdgraph_node for known document paths, section anchors, entities, source paths, or graph ids.
 - Use mdgraph_trace for relationship questions between two known documents, entities, or source references.
@@ -34,6 +34,8 @@ Do not treat MDGraph as hidden memory, a source AST index, or an authority beyon
 ## MCP Configuration
 
 Use the same stdio command in MCP-capable clients:
+
+The same instructions, host examples, config example, and prompt templates are also shipped in [`agent-pack/`](../../agent-pack/).
 
 ```json
 {
@@ -75,7 +77,7 @@ node /absolute/path/to/mdgraph/dist/bin/mdgraph.js index
 Task-start documentation brief:
 
 1. `mdgraph_status`
-2. `mdgraph_context` with the task text and known files
+2. `mdgraph_context` with the task text, `knownFiles`, and `maxChars` when the host budget is tight
 3. `mdgraph_node` or raw file reads only for the exact documents that still need inspection
 
 Relationship question:
@@ -94,5 +96,5 @@ Documentation health check:
 
 - MDGraph indexes Markdown documents, not source ASTs or arbitrary files.
 - The MCP surface intentionally stays at five tools: search, context, node, trace, and status.
-- The current budget control is character-based through project config and context packing. Token-specific host budgets should be handled by the agent or client.
+- The current budget control is character-based through project config, context packing, and MCP `maxChars`. Token-specific host budgets should be handled by the agent or client.
 - Real agent A/B file-read comparisons are not yet recorded; `mdgraph eval` is a deterministic retrieval smoke check, not a substitute for those studies.

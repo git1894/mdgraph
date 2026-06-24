@@ -12,6 +12,7 @@ import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
 import { explainSearchGraph, searchGraph } from "../query/search.js";
 import { traceNodes } from "../query/trace.js";
+import { packageVersion } from "../version.js";
 import { watchProject } from "../watcher/file-watcher.js";
 
 const program = new Command();
@@ -19,7 +20,7 @@ const program = new Command();
 program
   .name("mdgraph")
   .description("Local-first Markdown document graph for AI coding workflows")
-  .version("0.1.0");
+  .version(packageVersion());
 
 program
   .command("init")

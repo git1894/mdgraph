@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
+const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
 const tempRoots = [];
 
 try {
@@ -22,9 +23,14 @@ try {
   run("npm", ["init", "-y"], { cwd: installDir });
   run("npm", ["install", tarballPath], { cwd: installDir });
   const version = run("npx", ["mdgraph", "--version"], { cwd: installDir }).stdout.trim();
-  if (version !== "0.1.0") {
-    throw new Error(`Expected packed mdgraph version 0.1.0, got ${version}`);
+  if (version !== packageJson.version) {
+    throw new Error(`Expected packed mdgraph version ${packageJson.version}, got ${version}`);
   }
+  assertInstalledFile(installDir, "node_modules/mdgraph/agent-pack/mdgraph-agent-instructions.md");
+  assertInstalledFile(installDir, "node_modules/mdgraph/agent-pack/host-examples.md");
+  assertInstalledFile(installDir, "node_modules/mdgraph/agent-pack/mcp-config.example.json");
+  assertInstalledFile(installDir, "node_modules/mdgraph/agent-pack/prompts/status-doctor.md");
+  assertInstalledFile(installDir, "node_modules/mdgraph/docs/EN/Agent_Integration.md");
 } finally {
   for (const root of tempRoots) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -54,4 +60,11 @@ function run(command, args, options) {
     ].join("\n"));
   }
   return result;
+}
+
+function assertInstalledFile(root, relativePath) {
+  const filePath = path.join(root, relativePath);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Expected packed file to be installed: ${relativePath}`);
+  }
 }

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { ErrorCodes, StdioTransport, type JsonRpcNotification, type JsonRpcRequest, type JsonRpcTransport } from "./transport.js";
 import { SERVER_INSTRUCTIONS, SERVER_INSTRUCTIONS_UNINDEXED } from "./server-instructions.js";
 import { McpInputError, ToolHandler, hasIndex, tools } from "./tools.js";
+import { packageVersion } from "../version.js";
 
 export const PROTOCOL_VERSION = "2024-11-05";
 
@@ -89,7 +90,7 @@ export class MCPServer {
     this.transport.sendResult(request.id, {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: {} },
-      serverInfo: { name: "mdgraph", version: "0.1.0" },
+      serverInfo: { name: "mdgraph", version: packageVersion() },
       instructions: hasIndex(projectRoot) ? SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS_UNINDEXED
     });
   }

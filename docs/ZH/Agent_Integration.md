@@ -7,13 +7,13 @@
 把 MDGraph 当作被显式邀请的文档上下文层，而不是隐藏记忆，也不是源码图谱。
 
 1. 如果不确定工作区是否已有索引，先调用 `mdgraph_status`。
-2. 跨文档问题优先用 `mdgraph_context`，例如设计文档、ADR、runbook、API 文档、source reference、incident 或 feature chain。
+2. 跨文档问题优先用 `mdgraph_context`，例如设计文档、ADR、runbook、API 文档、source reference、incident 或 feature chain。如果任务已经给出项目相对文档路径或源码路径，通过 MCP `knownFiles` 传入；如果宿主上下文预算较紧，通过 `maxChars` 控制返回字符数。
 3. 快速查关键字、实体、路径、命令、配置键、API route 或错误码时，用 `mdgraph_search`。
 4. 已经知道文档路径、章节锚点、实体名、源码路径或 graph id 时，用 `mdgraph_node`。
 5. 需要回答两个文档、实体或 source reference 之间如何关联时，用 `mdgraph_trace`。
 6. 只有在索引不可用、返回上下文不足、需要精确相邻原文，或用户明确要求读文件时，才回退到 raw file reads。
 
-对于 coding task，把任务描述和已知文件路径一起写进 `mdgraph_context` 查询。这样 MDGraph 可以返回更像 task-start documentation brief 的结果：相关文档、source refs、provenance 和后续检查目标。
+对于 coding task，把任务描述写进 `mdgraph_context` 查询，并通过 `knownFiles` 传入已知文件路径。这样 MDGraph 可以返回更像 task-start documentation brief 的结果：相关文档、source refs、provenance 和确定性的 `suggestedNextQueries`。
 
 ## 共享 Instruction Template
 
@@ -21,7 +21,7 @@
 Use MDGraph before reading multiple Markdown files manually.
 
 - Start with mdgraph_status if index availability is unclear.
-- Use mdgraph_context for cross-document design, ADR, runbook, API, incident, source-ref, or feature-chain questions.
+- Use mdgraph_context for cross-document design, ADR, runbook, API, incident, source-ref, or feature-chain questions. Include knownFiles and maxChars when the host supports MCP arguments.
 - Use mdgraph_search for quick keyword/entity/path lookup.
 - Use mdgraph_node for known document paths, section anchors, entities, source paths, or graph ids.
 - Use mdgraph_trace for relationship questions between two known documents, entities, or source references.
@@ -34,6 +34,8 @@ Do not treat MDGraph as hidden memory, a source AST index, or an authority beyon
 ## MCP 配置
 
 所有支持 MCP 的 client 都使用相同的 stdio command：
+
+同一套 instructions、宿主示例、配置示例和 prompt templates 也会随 [`agent-pack/`](../../agent-pack/) 发布。
 
 ```json
 {
@@ -75,7 +77,7 @@ node /absolute/path/to/mdgraph/dist/bin/mdgraph.js index
 Task-start documentation brief：
 
 1. `mdgraph_status`
-2. 使用任务描述和已知文件调用 `mdgraph_context`
+2. 使用任务描述、`knownFiles` 和必要时的 `maxChars` 调用 `mdgraph_context`
 3. 只对仍需确认的具体文档调用 `mdgraph_node` 或 raw file reads
 
 关系问题：
@@ -94,5 +96,5 @@ Task-start documentation brief：
 
 - MDGraph 索引 Markdown 文档，不索引源码 AST 或任意文件。
 - MCP surface 故意保持五个工具：search、context、node、trace、status。
-- 当前预算控制是通过项目配置和 context packing 实现的字符预算；宿主侧 token budget 仍应由 agent 或 client 处理。
+- 当前预算控制是通过项目配置、context packing 和 MCP `maxChars` 实现的字符预算；宿主侧 token budget 仍应由 agent 或 client 处理。
 - 真实 agent A/B file-read 对比案例尚未记录；`mdgraph eval` 是确定性检索 smoke check，不能替代这类实验。

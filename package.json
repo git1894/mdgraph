@@ -14,6 +14,9 @@
   "homepage": "https://github.com/git1894/mdgraph#readme",
   "files": [
     "dist",
+    "agent-pack",
+    "docs/EN/Agent_Integration.md",
+    "docs/ZH/Agent_Integration.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
@@ -55,5 +58,11 @@
   },
   "engines": {
     "node": ">=22.5.0"
-  }
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": ""
 }

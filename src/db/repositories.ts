@@ -169,6 +169,11 @@ export class GraphRepository {
     };
   }
 
+  latestIndexedAt(): string | undefined {
+    const row = this.db.prepare("SELECT MAX(indexed_at) AS indexed_at FROM documents").get() as Record<string, unknown> | undefined;
+    return typeof row?.indexed_at === "string" && row.indexed_at ? row.indexed_at : undefined;
+  }
+
   storageDiagnostics(): StorageDiagnostics {
     const pageSize = pragmaNumber(this.db, "page_size");
     const pageCount = pragmaNumber(this.db, "page_count");

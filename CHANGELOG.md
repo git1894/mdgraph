@@ -9,10 +9,13 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 ### Added
 
 - Added initial 0.3 agent integration guidance with a shared instruction template, host setup notes, and query-first/file-read-second workflows.
+- Added MCP `mdgraph_context` support for `knownFiles`, `maxChars`, and deterministic `suggestedNextQueries` in structured context results.
+- Added a packaged `agent-pack/` with reusable instructions, host examples, MCP configuration, and prompt templates for MCP-capable coding agents.
 
 ### Changed
 
 - Refined MCP server instructions and tool descriptions so agents get clearer guidance without expanding the five-tool MCP surface.
+- Added lightweight MCP `mdgraph_status` freshness metadata with last-indexed timing and a doctor/index recommendation.
 
 ## 0.2.0 - 2026-06-23
 

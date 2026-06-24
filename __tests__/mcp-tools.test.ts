@@ -12,6 +12,24 @@ interface NodeToolStructuredContent {
   node?: { data: { anchor?: string } };
 }
 
+interface ContextToolStructuredContent {
+  context: {
+    maxChars: number;
+    usedChars: number;
+    knownFiles?: string[];
+    suggestedNextQueries?: string[];
+    items: Array<{ path: string; reason: string }>;
+  };
+}
+
+interface StatusToolStructuredContent {
+  freshness?: {
+    state: string;
+    lastIndexedAt?: string;
+    recommendation: string;
+  };
+}
+
 let tempDirs: string[] = [];
 
 afterEach(() => {
@@ -58,6 +76,43 @@ describe("ToolHandler", () => {
     expect(handler.execute("mdgraph_context", { query: "RedisTimeoutError login" }).content[0].text).toContain("Context for");
     expect(handler.execute("mdgraph_node", { query: "AuthService" }).content[0].text).toContain("entity: AuthService");
     expect(handler.execute("mdgraph_trace", { from: "AuthService", to: "RedisTimeoutError" }).content[0].text).toContain("Trace:");
+  });
+
+  it("builds agent task-start context from known files and a character budget", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-context-known-files-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const handler = new ToolHandler(root);
+    const result = handler.execute("mdgraph_context", {
+      query: "unrelated task text",
+      knownFiles: ["src/auth/AuthService.ts"],
+      maxChars: 120
+    });
+    const content = result.structuredContent as ContextToolStructuredContent;
+
+    expect(result.content[0].text).toContain("Known files: src/auth/AuthService.ts");
+    expect(result.content[0].text).toContain("Suggested next queries:");
+    expect(content.context.maxChars).toBe(120);
+    expect(content.context.usedChars).toBeLessThanOrEqual(120);
+    expect(content.context.knownFiles).toEqual(["src/auth/AuthService.ts"]);
+    expect(content.context.items.some((item) => item.path === "docs/auth-v2-design.md")).toBe(true);
+  });
+
+  it("returns lightweight freshness metadata from status", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-status-freshness-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const handler = new ToolHandler(root);
+    const result = handler.execute("mdgraph_status");
+    const content = result.structuredContent as StatusToolStructuredContent;
+
+    expect(result.content[0].text).toContain("Freshness: not file-checked");
+    expect(content.freshness).toMatchObject({ state: "not_checked" });
+    expect(content.freshness?.lastIndexedAt).toBeTruthy();
   });
 
   it("resolves sections by path anchor and reports ambiguous heading queries", async () => {

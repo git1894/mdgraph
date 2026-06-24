@@ -53,6 +53,12 @@ export const tools: McpToolDefinition[] = [
       required: ["query"],
       properties: {
         query: { type: "string", description: "Question or topic to gather document context for." },
+        knownFiles: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional known project-relative document or source paths to seed the task-start brief."
+        },
+        maxChars: { type: "number", description: "Optional character budget for the returned context package." },
         projectPath: { type: "string", description: "Optional project root. Defaults to server cwd." }
       }
     }
@@ -114,7 +120,8 @@ export class ToolHandler {
       }
       return this.withRepository(projectRoot, (repository) => {
         const counts = repository.counts();
-        return textResult(formatStatus(projectRoot, counts), { projectRoot, indexed: true, counts });
+        const freshness = statusFreshness(repository.latestIndexedAt());
+        return textResult(formatStatus(projectRoot, counts, freshness), { projectRoot, indexed: true, counts, freshness });
       });
     }
 
@@ -135,7 +142,9 @@ export class ToolHandler {
         return this.withRepository(projectRoot, (repository) => {
           const config = loadConfig(projectRoot);
           const query = requiredString(args.query, "query");
-          const context = buildContext(repository, config, query);
+          const knownFiles = optionalStringArray(args.knownFiles, "knownFiles");
+          const maxChars = optionalBoundedPositiveInteger(args.maxChars, config.search.maxContextChars, "maxChars", 200_000);
+          const context = buildContext(repository, config, query, { knownFiles, maxChars });
           return textResult(formatContext(context), { projectRoot, context });
         });
       case "mdgraph_node":
@@ -184,12 +193,20 @@ function textResult(text: string, structuredContent?: unknown): McpToolResult {
   };
 }
 
-function formatStatus(projectRoot: string, counts: StatusCounts): string {
+interface StatusFreshness {
+  state: "not_checked";
+  lastIndexedAt?: string;
+  recommendation: string;
+}
+
+function formatStatus(projectRoot: string, counts: StatusCounts, freshness: StatusFreshness): string {
   const database = databasePath(projectRoot);
   return [
     "MDGraph index status: active",
     `Project: ${projectRoot}`,
     `Database: ${database}`,
+    `Freshness: ${freshness.recommendation}`,
+    freshness.lastIndexedAt ? `Last indexed: ${freshness.lastIndexedAt}` : "Last indexed: unavailable",
     `Documents: ${counts.documents}`,
     `Sections: ${counts.sections}`,
     `Entities: ${counts.entities}`,
@@ -198,6 +215,14 @@ function formatStatus(projectRoot: string, counts: StatusCounts): string {
     `Chunks: ${counts.chunks}`,
     `Vectors: ${counts.vectors}`
   ].join("\n");
+}
+
+function statusFreshness(lastIndexedAt: string | undefined): StatusFreshness {
+  return {
+    state: "not_checked",
+    lastIndexedAt,
+    recommendation: "not file-checked by MCP status; run `mdgraph doctor --json` or `mdgraph index` after Markdown changes"
+  };
 }
 
 function formatSearch(results: SearchResult[]): string {
@@ -226,7 +251,11 @@ function formatContext(context: ContextResult): string {
     const entities = item.matchedEntities.length ? `\nMatched entities: ${item.matchedEntities.join(", ")}` : "";
     return `## ${index + 1}. ${item.path}${line}\nReason: ${item.reason}${entities}\n${heading}\n${item.content}`;
   });
-  return [header, ...items].join("\n\n");
+  const hints = [
+    context.knownFiles?.length ? `Known files: ${context.knownFiles.join(", ")}` : "",
+    context.suggestedNextQueries?.length ? `Suggested next queries:\n${context.suggestedNextQueries.map((query) => `- ${query}`).join("\n")}` : ""
+  ].filter(Boolean);
+  return [header, ...hints, ...items].join("\n\n");
 }
 
 function formatNode(node: NodeRecord, repository: GraphRepository): string {
@@ -310,6 +339,40 @@ function optionalPositiveInteger(value: unknown, fallback: number): number {
     throw new McpInputError(`Expected positive integer, got ${String(value)}`);
   }
   return parsed;
+}
+
+function optionalBoundedPositiveInteger(value: unknown, fallback: number, field: string, max: number): number {
+  const parsed = optionalPositiveInteger(value, fallback);
+  if (parsed > max) {
+    throw new McpInputError(`${field} must be at most ${max}`);
+  }
+  return parsed;
+}
+
+function optionalStringArray(value: unknown, field: string): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new McpInputError(`${field} must be an array of strings when provided`);
+  }
+  if (value.length > 20) {
+    throw new McpInputError(`${field} must include at most 20 entries`);
+  }
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new McpInputError(`${field} must contain only strings`);
+    }
+    const trimmed = item.trim();
+    if (trimmed.length > 1_000) {
+      throw new McpInputError(`${field} entry is too long`);
+    }
+    if (trimmed) {
+      result.push(trimmed);
+    }
+  }
+  return [...new Set(result)];
 }
 
 function trimBlock(content: string, maxChars: number): string {

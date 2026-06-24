@@ -228,10 +228,10 @@ When running as an MCP server, MDGraph exposes five focused tools:
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `mdgraph_search` | Search documents, sections, and entities by keyword or entity name. | Quick lookup — before reading files. |
-| `mdgraph_context` | Build an explainable context package for a cross-document question. | Understanding a feature, debugging a flow — needs docs from multiple files. |
+| `mdgraph_context` | Build an explainable context package for a cross-document question. Supports MCP `knownFiles` and `maxChars` hints for task-start briefs. | Understanding a feature, debugging a flow — needs docs from multiple files. |
 | `mdgraph_node` | Show details for a document, entity, source ref, section, or chunk. Supports `docs/file.md#anchor` for sections. | You know the name/path/anchor and want the full record. |
 | `mdgraph_trace` | Find an explainable graph path between two nodes. | "How is A related to B" — relationship discovery. |
-| `mdgraph_status` | Report index health, counts, and database path. | Verify the index is active before relying on it. |
+| `mdgraph_status` | Report index availability, counts, database path, and lightweight last-indexed freshness metadata. | Verify the index is active before relying on it. |
 
 In a workspace with no `.mdgraph/` index, the server announces itself inactive — agents fall back to normal file tools, and indexing stays your decision.
 
@@ -240,12 +240,15 @@ In a workspace with no `.mdgraph/` index, the server announces itself inactive �
 MDGraph's MCP server delivers the following guidance to your agent automatically:
 
 - **Use `mdgraph_context` before reading many docs manually** — it returns a packed bundle of relevant sections with their reasons for inclusion.
+- **Include task text and known file paths in `mdgraph_context`** when starting a coding task — MCP accepts `knownFiles` and `maxChars` for tighter briefs.
 - **Use `mdgraph_search` for quick keyword or entity lookup** — results are ranked by relevance with matched entities highlighted.
 - **Use `mdgraph_node` when you know what you're looking for** — resolves by name, path, `docs/file.md#anchor`, or graph ID.
 - **Use `mdgraph_trace` for relationship questions** — returns every step of the path with edge kind, provenance, and confidence.
+- **Use `mdgraph_status` as a lightweight readiness check** — it does not scan files for stale changes; run `mdgraph doctor --json` or `mdgraph index` after Markdown changes.
 - **Prefer returned context directly** when it includes enough content and reasons. Only read files when MDGraph is unavailable or the returned context is clearly insufficient.
 
 For host-specific setup notes and the shared instruction template, see [Agent_Integration.md](docs/EN/Agent_Integration.md).
+Reusable instructions, MCP config, and prompt templates are packaged in [agent-pack/](agent-pack/).
 
 ---
 
