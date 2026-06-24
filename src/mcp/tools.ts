@@ -3,10 +3,12 @@ import path from "node:path";
 import { databasePath, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeRecord, type NodeResolution, type StatusCounts } from "../db/repositories.js";
-import { buildContext, type ContextResult } from "../query/context-builder.js";
+import { buildContext, type ContextAutoMode, type ContextResult } from "../query/context-builder.js";
 import { searchGraph } from "../query/search.js";
 import { traceNodes, type TraceResult } from "../query/trace.js";
-import type { SearchResult } from "../types.js";
+import { scanMarkdownFilesSync } from "../scanner/file-scanner.js";
+import type { MDGraphConfig, SearchResult } from "../types.js";
+import { normalizePath } from "../utils/text.js";
 
 export interface McpToolDefinition {
   name: string;
@@ -119,8 +121,9 @@ export class ToolHandler {
         return textResult(unindexedMessage(projectRoot), { projectRoot, indexed: false });
       }
       return this.withRepository(projectRoot, (repository) => {
+        const config = loadConfig(projectRoot);
         const counts = repository.counts();
-        const freshness = statusFreshness(repository.latestIndexedAt());
+        const freshness = statusFreshness(projectRoot, config, repository);
         return textResult(formatStatus(projectRoot, counts, freshness), { projectRoot, indexed: true, counts, freshness });
       });
     }
@@ -134,17 +137,29 @@ export class ToolHandler {
         return this.withRepository(projectRoot, (repository) => {
           const config = loadConfig(projectRoot);
           const query = requiredString(args.query, "query");
-          const limit = optionalPositiveInteger(args.limit, config.search.defaultLimit);
+          const counts = repository.counts();
+          const hasManualLimit = args.limit !== undefined && args.limit !== null;
+          const autoMode = agentSearchMode(config, counts, query);
+          const limit = hasManualLimit ? optionalPositiveInteger(args.limit, config.search.defaultLimit) : autoMode.limit;
           const results = searchGraph(repository, config, query, limit);
-          return textResult(formatSearch(results), { projectRoot, query, results });
+          const mode = hasManualLimit ? { name: "manual" as const, limit, reason: "explicit limit argument" } : autoMode;
+          return textResult(formatSearch(results), { projectRoot, query, mode, results });
         });
       case "mdgraph_context":
         return this.withRepository(projectRoot, (repository) => {
           const config = loadConfig(projectRoot);
           const query = requiredString(args.query, "query");
           const knownFiles = optionalStringArray(args.knownFiles, "knownFiles");
-          const maxChars = optionalBoundedPositiveInteger(args.maxChars, config.search.maxContextChars, "maxChars", 200_000);
-          const context = buildContext(repository, config, query, { knownFiles, maxChars });
+          const hasManualMaxChars = args.maxChars !== undefined && args.maxChars !== null;
+          const requestedMaxChars = optionalBoundedPositiveInteger(args.maxChars, config.search.maxContextChars, "maxChars", 200_000);
+          const mode = agentContextMode(config, repository.counts(), query, knownFiles, hasManualMaxChars ? requestedMaxChars : undefined);
+          const context = buildContext(repository, config, query, {
+            knownFiles,
+            maxChars: mode.maxChars,
+            searchLimit: mode.searchLimit,
+            maxDepth: mode.maxDepth,
+            mode
+          });
           return textResult(formatContext(context), { projectRoot, context });
         });
       case "mdgraph_node":
@@ -194,9 +209,17 @@ function textResult(text: string, structuredContent?: unknown): McpToolResult {
 }
 
 interface StatusFreshness {
-  state: "not_checked";
+  state: "fresh" | "stale" | "unknown";
   lastIndexedAt?: string;
   recommendation: string;
+  checkedAt?: string;
+  issues?: Array<{ path: string; reason: "added" | "deleted" | "modified" }>;
+}
+
+interface AgentSearchMode {
+  name: "auto";
+  limit: number;
+  reason: string;
 }
 
 function formatStatus(projectRoot: string, counts: StatusCounts, freshness: StatusFreshness): string {
@@ -205,8 +228,9 @@ function formatStatus(projectRoot: string, counts: StatusCounts, freshness: Stat
     "MDGraph index status: active",
     `Project: ${projectRoot}`,
     `Database: ${database}`,
-    `Freshness: ${freshness.recommendation}`,
+    `Freshness: ${freshness.state} - ${freshness.recommendation}`,
     freshness.lastIndexedAt ? `Last indexed: ${freshness.lastIndexedAt}` : "Last indexed: unavailable",
+    freshness.issues?.length ? `Stale issues: ${freshness.issues.slice(0, 5).map((issue) => `${issue.path}:${issue.reason}`).join(", ")}` : "Stale issues: none",
     `Documents: ${counts.documents}`,
     `Sections: ${counts.sections}`,
     `Entities: ${counts.entities}`,
@@ -217,11 +241,102 @@ function formatStatus(projectRoot: string, counts: StatusCounts, freshness: Stat
   ].join("\n");
 }
 
-function statusFreshness(lastIndexedAt: string | undefined): StatusFreshness {
+function statusFreshness(projectRoot: string, config: MDGraphConfig, repository: GraphRepository): StatusFreshness {
+  const lastIndexedAt = repository.latestIndexedAt();
+  const checkedAt = new Date().toISOString();
+  if (!lastIndexedAt) {
+    return {
+      state: "unknown",
+      checkedAt,
+      recommendation: "no indexed timestamp is available; run `mdgraph index` before relying on the graph"
+    };
+  }
+
+  try {
+    const indexedAtMs = Date.parse(lastIndexedAt);
+    const scanned = scanMarkdownFilesSync(projectRoot, config);
+    const indexed = repository.documentHashes();
+    const scannedByPath = new Map(scanned.map((filePath) => [normalizePath(path.relative(projectRoot, filePath)), filePath]));
+    const issues: NonNullable<StatusFreshness["issues"]> = [];
+
+    for (const [relativePath, absolutePath] of scannedByPath) {
+      if (!indexed.has(relativePath)) {
+        issues.push({ path: relativePath, reason: "added" });
+        continue;
+      }
+      if (Number.isFinite(indexedAtMs) && fs.statSync(absolutePath).mtimeMs > indexedAtMs + 1) {
+        issues.push({ path: relativePath, reason: "modified" });
+      }
+    }
+
+    for (const documentPath of indexed.keys()) {
+      if (!scannedByPath.has(documentPath)) {
+        issues.push({ path: documentPath, reason: "deleted" });
+      }
+    }
+
+    const sortedIssues = issues.sort((left, right) => left.path.localeCompare(right.path) || left.reason.localeCompare(right.reason));
+    return {
+      state: sortedIssues.length ? "stale" : "fresh",
+      lastIndexedAt,
+      checkedAt,
+      recommendation: sortedIssues.length
+        ? "Markdown files changed since indexing; run `mdgraph index` before relying on results"
+        : "indexed Markdown files match the lightweight status freshness check",
+      issues: sortedIssues.length ? sortedIssues.slice(0, 20) : undefined
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      state: "unknown",
+      lastIndexedAt,
+      checkedAt,
+      recommendation: `freshness check failed: ${message}; run \`mdgraph doctor --json\` or \`mdgraph index\``
+    };
+  }
+}
+
+function agentSearchMode(config: MDGraphConfig, counts: StatusCounts, query: string): AgentSearchMode {
+  const wordCount = query.split(/\s+/).filter(Boolean).length;
+  const reasons = ["config default"];
+  let limit = config.search.defaultLimit;
+  if (wordCount > 6 || query.length > 80) {
+    limit += Math.ceil(config.search.defaultLimit / 2);
+    reasons.push("multi-term task query");
+  }
+  if (counts.documents >= 1000) {
+    limit += config.search.defaultLimit;
+    reasons.push("large index");
+  } else if (counts.documents >= 100) {
+    limit += Math.ceil(config.search.defaultLimit / 2);
+    reasons.push("medium index");
+  }
+
   return {
-    state: "not_checked",
-    lastIndexedAt,
-    recommendation: "not file-checked by MCP status; run `mdgraph doctor --json` or `mdgraph index` after Markdown changes"
+    name: "auto",
+    limit: Math.min(24, Math.max(4, limit)),
+    reason: reasons.join("; ")
+  };
+}
+
+function agentContextMode(
+  config: MDGraphConfig,
+  counts: StatusCounts,
+  query: string,
+  knownFiles: string[],
+  requestedMaxChars: number | undefined
+): ContextAutoMode {
+  const searchMode = agentSearchMode(config, counts, query);
+  const wordCount = query.split(/\s+/).filter(Boolean).length;
+  const needsMoreDepth = knownFiles.length > 0 || wordCount > 6 || counts.documents >= 100;
+  const maxDepth = Math.min(4, config.search.maxDepth + (needsMoreDepth ? 1 : 0));
+  const maxChars = requestedMaxChars ?? Math.min(config.search.maxContextChars, needsMoreDepth ? config.search.maxContextChars : 16_000);
+  return {
+    name: "auto",
+    searchLimit: searchMode.limit,
+    maxDepth,
+    maxChars,
+    reason: [searchMode.reason, requestedMaxChars ? "explicit character budget" : "auto character budget"].join("; ")
   };
 }
 
@@ -249,9 +364,12 @@ function formatContext(context: ContextResult): string {
     const line = item.lines ? `:${item.lines.start}` : "";
     const heading = item.heading ? `# ${item.heading}` : `# ${item.title}`;
     const entities = item.matchedEntities.length ? `\nMatched entities: ${item.matchedEntities.join(", ")}` : "";
-    return `## ${index + 1}. ${item.path}${line}\nReason: ${item.reason}${entities}\n${heading}\n${item.content}`;
+    const sourceRefs = item.sourceRefs?.length ? `\nSource refs: ${item.sourceRefs.map((sourceRef) => `${sourceRef.path} (${sourceRef.edgeKind}/${sourceRef.provenance}, confidence ${sourceRef.confidence})`).join(", ")}` : "";
+    const riskNotes = item.riskNotes?.length ? `\nRisk notes: ${item.riskNotes.join("; ")}` : "";
+    return `## ${index + 1}. ${item.path}${line}\nReason: ${item.reason}${entities}${sourceRefs}${riskNotes}\n${heading}\n${item.content}`;
   });
   const hints = [
+    context.mode ? `Mode: ${context.mode.name} (searchLimit ${context.mode.searchLimit}, maxDepth ${context.mode.maxDepth}; ${context.mode.reason})` : "",
     context.knownFiles?.length ? `Known files: ${context.knownFiles.join(", ")}` : "",
     context.suggestedNextQueries?.length ? `Suggested next queries:\n${context.suggestedNextQueries.map((query) => `- ${query}`).join("\n")}` : ""
   ].filter(Boolean);

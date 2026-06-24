@@ -17,7 +17,7 @@ For coding tasks, include the task text and any known file paths in the
 mdgraph_context query so the result works as a task-start documentation brief.
 
 Prefer returned context directly when it includes enough content, reasons,
-provenance, and source refs. Read files when MDGraph is unavailable, the result
+provenance, source refs, and risk notes. Read files when MDGraph is unavailable, the result
 is too sparse, exact neighboring prose is required, or the user explicitly asks
 for file-level inspection.`;
 

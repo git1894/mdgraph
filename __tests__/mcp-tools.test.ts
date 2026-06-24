@@ -18,8 +18,13 @@ interface ContextToolStructuredContent {
     usedChars: number;
     knownFiles?: string[];
     suggestedNextQueries?: string[];
+    mode?: { name: string; searchLimit: number; maxDepth: number; maxChars: number };
     items: Array<{ path: string; reason: string }>;
   };
+}
+
+interface SearchToolStructuredContent {
+  mode?: { name: string; limit: number };
 }
 
 interface StatusToolStructuredContent {
@@ -27,6 +32,7 @@ interface StatusToolStructuredContent {
     state: string;
     lastIndexedAt?: string;
     recommendation: string;
+    issues?: Array<{ path: string; reason: string }>;
   };
 }
 
@@ -78,6 +84,24 @@ describe("ToolHandler", () => {
     expect(handler.execute("mdgraph_trace", { from: "AuthService", to: "RedisTimeoutError" }).content[0].text).toContain("Trace:");
   });
 
+  it("reports agent auto mode decisions for search and context", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-auto-mode-"));
+    tempDirs.push(root);
+    createFixtureDocs(root);
+    await indexProject(root);
+
+    const handler = new ToolHandler(root);
+    const query = "How does AuthService handle RedisTimeoutError during login session refresh across docs?";
+    const search = handler.execute("mdgraph_search", { query }).structuredContent as SearchToolStructuredContent;
+    const context = handler.execute("mdgraph_context", { query }).structuredContent as ContextToolStructuredContent;
+
+    expect(search.mode).toMatchObject({ name: "auto" });
+    expect(search.mode?.limit).toBeGreaterThan(8);
+    expect(context.context.mode).toMatchObject({ name: "auto" });
+    expect(context.context.mode?.searchLimit).toBeGreaterThan(8);
+    expect(context.context.suggestedNextQueries?.length).toBeGreaterThan(0);
+  });
+
   it("builds agent task-start context from known files and a character budget", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-context-known-files-"));
     tempDirs.push(root);
@@ -90,17 +114,53 @@ describe("ToolHandler", () => {
       knownFiles: ["src/auth/AuthService.ts"],
       maxChars: 120
     });
-    const content = result.structuredContent as ContextToolStructuredContent;
+    const content = result.structuredContent as ContextToolStructuredContent & {
+      context: {
+        items: Array<{ path: string; sourceRefs?: Array<{ path: string; edgeKind: string }> }>;
+      };
+    };
 
     expect(result.content[0].text).toContain("Known files: src/auth/AuthService.ts");
     expect(result.content[0].text).toContain("Suggested next queries:");
+    expect(result.content[0].text).toContain("Source refs: src/auth/AuthService.ts");
     expect(content.context.maxChars).toBe(120);
     expect(content.context.usedChars).toBeLessThanOrEqual(120);
     expect(content.context.knownFiles).toEqual(["src/auth/AuthService.ts"]);
-    expect(content.context.items.some((item) => item.path === "docs/auth-v2-design.md")).toBe(true);
+    expect(content.context.items.some((item) => item.path === "docs/auth-v2-design.md" && item.sourceRefs?.some((sourceRef) => sourceRef.path === "src/auth/AuthService.ts" && sourceRef.edgeKind === "IMPLEMENTS"))).toBe(true);
   });
 
-  it("returns lightweight freshness metadata from status", async () => {
+  it("includes risk notes for non-active context documents", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-context-risk-notes-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "legacy.md"), [
+      "---",
+      "title: Legacy Design",
+      "type: design",
+      "status: superseded",
+      "trust_tier: generated",
+      "defines:",
+      "  - LegacyRisk",
+      "---",
+      "# Legacy Design",
+      "",
+      "`LegacyRisk` should be reviewed before reuse.",
+      ""
+    ].join("\n"), "utf8");
+    await indexProject(root);
+
+    const handler = new ToolHandler(root);
+    const result = handler.execute("mdgraph_context", { query: "LegacyRisk" });
+    const content = result.structuredContent as ContextToolStructuredContent & {
+      context: { items: Array<{ riskNotes?: string[] }> };
+    };
+
+    expect(result.content[0].text).toContain("Risk notes: document status: superseded; trust tier: generated");
+    expect(content.context.items[0].riskNotes).toEqual(["document status: superseded", "trust tier: generated"]);
+  });
+
+  it("returns freshness metadata and detects stale Markdown files from status", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-status-freshness-"));
     tempDirs.push(root);
     createFixtureDocs(root);
@@ -110,9 +170,20 @@ describe("ToolHandler", () => {
     const result = handler.execute("mdgraph_status");
     const content = result.structuredContent as StatusToolStructuredContent;
 
-    expect(result.content[0].text).toContain("Freshness: not file-checked");
-    expect(content.freshness).toMatchObject({ state: "not_checked" });
+    expect(result.content[0].text).toContain("Freshness: fresh");
+    expect(content.freshness).toMatchObject({ state: "fresh" });
     expect(content.freshness?.lastIndexedAt).toBeTruthy();
+
+    const changedPath = path.join(root, "docs", "auth-v2-design.md");
+    fs.appendFileSync(changedPath, "\nChanged after indexing.\n", "utf8");
+    const future = new Date(Date.now() + 5000);
+    fs.utimesSync(changedPath, future, future);
+
+    const stale = handler.execute("mdgraph_status");
+    const staleContent = stale.structuredContent as StatusToolStructuredContent;
+    expect(stale.content[0].text).toContain("Freshness: stale");
+    expect(staleContent.freshness).toMatchObject({ state: "stale" });
+    expect(staleContent.freshness?.issues?.some((issue) => issue.path === "docs/auth-v2-design.md" && issue.reason === "modified")).toBe(true);
   });
 
   it("resolves sections by path anchor and reports ambiguous heading queries", async () => {
