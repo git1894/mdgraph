@@ -37,8 +37,22 @@ describe("MCPServer", () => {
     });
 
     expect(transport.responses[0].result).toMatchObject({ serverInfo: { name: "mdgraph" } });
+    expect(JSON.stringify(transport.responses[0].result)).toContain("task-start documentation brief");
     expect(JSON.stringify(transport.responses[1].result)).toContain("mdgraph_context");
     expect(JSON.stringify(transport.responses[2].result)).toContain("auth-v2-design.md");
+  });
+
+  it("returns unindexed guidance without asking agents to create indexes automatically", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-unindexed-"));
+    tempDirs.push(root);
+
+    const transport = new FakeTransport();
+    const server = new MCPServer(transport, { projectRoot: root });
+    server.start();
+
+    await transport.receive({ jsonrpc: "2.0", id: 1, method: "initialize", params: { rootUri: pathToFileUri(root) } });
+
+    expect(JSON.stringify(transport.responses[0].result)).toContain("Do not create or");
   });
 
   it("uses initialize rootUri as the default project root for later tool calls", async () => {

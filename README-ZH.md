@@ -11,7 +11,7 @@
 [![npm version](https://img.shields.io/badge/version-0.1.0-blue.svg)]()
 
 <br>
-<a href="./README.md">ENGLISH</a> • <a href="./docs/ZH/Architecture.md">架构说明</a> •  <a href="./docs/ZH/Evaluation_Questions.md">使用评估</a> 
+<a href="./README.md">ENGLISH</a> • <a href="./docs/ZH/Architecture.md">架构说明</a> • <a href="./docs/ZH/Agent_Integration.md">Agent 集成</a> • <a href="./docs/ZH/Evaluation_Questions.md">使用评估</a>
 <br>
 
 **MDGraph 是 AI 编码代理的文档智能层。**
@@ -244,6 +244,8 @@ MDGraph 的 MCP 服务器会自动向你的代理传递以下指引：
 - **当你知道要查找什么时使用 `mdgraph_node`** — 按名称、路径、`docs/file.md#anchor` 或图谱 ID 解析。
 - **关系类问题使用 `mdgraph_trace`** — 返回路径的每一步，包含边类型、来源和置信度。
 - **当返回的上下文内容足够且包含原因时，优先直接使用它**。仅在 MDGraph 不可用或返回的上下文明显不足时再读取文件。
+
+宿主配置说明和共享 instruction template 见 [Agent_Integration.md](docs/ZH/Agent_Integration.md)。
 
 ---
 

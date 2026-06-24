@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { indexProject } from "../src/indexer.js";
-import { ToolHandler, hasIndex } from "../src/mcp/tools.js";
+import { ToolHandler, hasIndex, tools } from "../src/mcp/tools.js";
 import { createFixtureDocs } from "./fixtures.js";
 
 interface NodeToolStructuredContent {
@@ -22,6 +22,18 @@ afterEach(() => {
 });
 
 describe("ToolHandler", () => {
+  it("keeps the MCP tool surface small and agent-oriented", () => {
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "mdgraph_search",
+      "mdgraph_context",
+      "mdgraph_node",
+      "mdgraph_trace",
+      "mdgraph_status"
+    ]);
+    expect(tools.find((tool) => tool.name === "mdgraph_context")?.description).toContain("task-start documentation brief");
+    expect(tools.find((tool) => tool.name === "mdgraph_status")?.description).toContain("Use first");
+  });
+
   it("reports inactive status without creating a database", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-empty-"));
     tempDirs.push(root);

@@ -4,6 +4,16 @@ All notable changes to MDGraph will be documented in this file.
 
 This project follows the spirit of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses semantic versioning for public releases once the API surface is stable.
 
+## Unreleased
+
+### Added
+
+- Added initial 0.3 agent integration guidance with a shared instruction template, host setup notes, and query-first/file-read-second workflows.
+
+### Changed
+
+- Refined MCP server instructions and tool descriptions so agents get clearer guidance without expanding the five-tool MCP surface.
+
 ## 0.2.0 - 2026-06-23
 
 ### Added

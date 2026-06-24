@@ -32,7 +32,7 @@ export class McpInputError extends Error {
 export const tools: McpToolDefinition[] = [
   {
     name: "mdgraph_search",
-    description: "Search indexed Markdown documents, sections, and entities. Use for quick keyword or entity lookup.",
+    description: "Search indexed Markdown documents, sections, and entities. Use before file reads for quick keyword, entity, path, command, config key, API route, or error-code lookup.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -46,7 +46,7 @@ export const tools: McpToolDefinition[] = [
   },
   {
     name: "mdgraph_context",
-    description: "Build an explainable context package for a cross-document question. Use before reading multiple docs manually.",
+    description: "Build an explainable task-start documentation brief for a cross-document question. Use before reading multiple Markdown docs manually.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -59,7 +59,7 @@ export const tools: McpToolDefinition[] = [
   },
   {
     name: "mdgraph_node",
-    description: "Show details for a document, entity, source reference, section, or chunk by name, path, or id.",
+    description: "Show details for a known document, section anchor, entity, source reference, chunk, or graph id after search/context narrows the target.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -72,7 +72,7 @@ export const tools: McpToolDefinition[] = [
   },
   {
     name: "mdgraph_trace",
-    description: "Trace an explainable path between two indexed documents, entities, or source references.",
+    description: "Trace an explainable relationship path between two indexed documents, entities, or source references.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -87,7 +87,7 @@ export const tools: McpToolDefinition[] = [
   },
   {
     name: "mdgraph_status",
-    description: "Show MDGraph index status and graph counts for the workspace.",
+    description: "Show whether the MDGraph index is available, plus graph counts and database path. Use first when index availability is unclear.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

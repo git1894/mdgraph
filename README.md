@@ -12,7 +12,7 @@
 [![Release](https://img.shields.io/github/v/release/git1894/MDGraph?include_prereleases&label=release)](https://github.com/git1894/MDGraph/releases)
 
 <br>
-<a href="./README-ZH.md">简体中文</a> • <a href="./docs/EN/Architecture.md">Architecture</a> •  <a href="./docs/EN/Evaluation_Questions.md">Evaluation_Questions</a> 
+<a href="./README-ZH.md">简体中文</a> • <a href="./docs/EN/Architecture.md">Architecture</a> • <a href="./docs/EN/Agent_Integration.md">Agent Integration</a> • <a href="./docs/EN/Evaluation_Questions.md">Evaluation_Questions</a>
 <br>
 **MDGraph is the documentation intelligence layer for AI coding agents.**
 It turns your Markdown docs — specs, ADRs, runbooks, API references, design docs — into a local SQLite graph that agents query directly instead of grep-searching a wall of `.md` files.
@@ -244,6 +244,8 @@ MDGraph's MCP server delivers the following guidance to your agent automatically
 - **Use `mdgraph_node` when you know what you're looking for** — resolves by name, path, `docs/file.md#anchor`, or graph ID.
 - **Use `mdgraph_trace` for relationship questions** — returns every step of the path with edge kind, provenance, and confidence.
 - **Prefer returned context directly** when it includes enough content and reasons. Only read files when MDGraph is unavailable or the returned context is clearly insufficient.
+
+For host-specific setup notes and the shared instruction template, see [Agent_Integration.md](docs/EN/Agent_Integration.md).
 
 ---
 
