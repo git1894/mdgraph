@@ -4,7 +4,19 @@ All notable changes to MDGraph will be documented in this file.
 
 This project follows the spirit of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses semantic versioning for public releases once the API surface is stable.
 
-## Unreleased
+## 0.4.0 - 2026-06-25
+
+### Added
+
+- Added typed `doctor --json` warnings with stable codes, severity, evidence, affected nodes, and remediation hints while preserving existing summary and issue arrays.
+- Added front matter diagnostics for invalid YAML, non-mapping front matter, unclosed front matter blocks, and invalid known MDGraph field shapes without blocking indexing.
+- Added lifecycle doctor warnings for active documents that still link to deprecated or superseded documents.
+- Added graph and storage health summaries to `doctor --json`, plus scoped `--changed` / `--since` reports and a typed `--fail-on` gate that does not change `--strict` semantics.
+- Added one-hop related document coverage for scoped doctor reports, explicit `document.deleted` scoped warnings, and conservative `tag.invalid_format` / `link.non_posix_path` convention warnings.
+
+### Fixed
+
+- Fixed relative Windows-style Markdown URLs so they resolve consistently before doctor applies portable-link convention warnings.
 
 ## 0.3.1 - 2026-06-24
 

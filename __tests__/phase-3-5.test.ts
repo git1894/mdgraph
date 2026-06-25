@@ -214,6 +214,19 @@ describe("phase 5 doctor", () => {
     expect(report.summary.staleSourceRefs).toBe(1);
     expect(report.summary.missingDefinitions).toBe(1);
     expect(report.deadLinks.map((issue) => issue.kind).sort()).toEqual(["markdown", "wikilink"]);
+    expect(report.warnings.map((warning) => warning.code)).toEqual(expect.arrayContaining([
+      "link.dead",
+      "source_ref.missing",
+      "definition.missing"
+    ]));
+    expect(report.warnings.find((warning) => warning.code === "link.dead")).toMatchObject({
+      severity: "error",
+      affectedNodes: [{ kind: "document", path: "docs/broken-design.md", line: 9 }]
+    });
+    expect(report.warnings.find((warning) => warning.code === "source_ref.missing")).toMatchObject({
+      severity: "error",
+      affectedNodes: [{ kind: "source_ref", path: "src/missing.ts" }]
+    });
   });
 
   it("reports stale indexes without mixing current files with old graph data", async () => {
@@ -240,6 +253,8 @@ describe("phase 5 doctor", () => {
     expect(staleIndex?.stale).toBe(true);
     expect(staleIndex?.recommendation).toContain("mdgraph index");
     expect(staleIndex?.issues.map((issue: { reason: string }) => issue.reason).sort()).toEqual(["added", "deleted", "id_changed", "modified"]);
+    expect(report.warnings).toHaveLength(4);
+    expect(report.warnings.every((warning) => warning.code === "index.stale" && warning.severity === "error")).toBe(true);
     expect(report.summary.deadLinks).toBe(0);
 
     const repository = new GraphRepository(openDatabase(root));
@@ -265,11 +280,252 @@ describe("phase 5 doctor", () => {
     expect(report.summary.deadLinks).toBe(0);
   });
 
+  it("reports front matter diagnostics as typed warnings", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-frontmatter-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "invalid-yaml.md"), ["---", "title: [broken", "---", "# Invalid YAML", ""].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "not-mapping.md"), ["---", "- item", "---", "# Not Mapping", ""].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "unclosed.md"), ["---", "title: Missing Close", "# Missing Close", ""].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "bad-fields.md"), [
+      "---",
+      "title: 42",
+      "type: mystery",
+      "tags: [ok, 7]",
+      "---",
+      "# Bad Fields",
+      ""
+    ].join("\n"), "utf8");
+
+    await indexProject(root);
+    const report = await runDoctor(root);
+    const frontMatterWarnings = report.warnings.filter((warning) => warning.code.startsWith("front_matter."));
+
+    expect(frontMatterWarnings.map((warning) => warning.code)).toEqual(expect.arrayContaining([
+      "front_matter.invalid_yaml",
+      "front_matter.not_mapping",
+      "front_matter.unclosed",
+      "front_matter.invalid_field"
+    ]));
+    expect(frontMatterWarnings.every((warning) => warning.severity === "warn")).toBe(true);
+    expect(frontMatterWarnings.find((warning) => warning.code === "front_matter.invalid_field")).toMatchObject({
+      affectedNodes: [{ kind: "document", path: "docs/bad-fields.md" }]
+    });
+    expect(frontMatterWarnings
+      .filter((warning) => warning.code === "front_matter.invalid_field")
+      .map((warning) => [warning.evidence.field, warning.evidence.line])
+      .sort()).toEqual([
+        ["tags", 4],
+        ["title", 2],
+        ["type", 3]
+      ]);
+  });
+
+  it("reports active documents that still reference deprecated or superseded documents", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-lifecycle-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "current.md"), [
+      "# Current",
+      "",
+      "See [Deprecated](./deprecated.md), [Status Superseded](./superseded-status.md), [Deprecated By](./superseded-deprecated-by.md), and [Reverse Supersedes](./superseded-reverse.md).",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "replacement-deprecated-by.md"), [
+      "---",
+      "title: Deprecated By Replacement",
+      "---",
+      "# Deprecated By Replacement",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "replacement-reverse.md"), [
+      "---",
+      "title: Reverse Replacement",
+      "supersedes: [superseded-reverse]",
+      "---",
+      "# Reverse Replacement",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "deprecated.md"), [
+      "---",
+      "title: Deprecated",
+      "status: deprecated",
+      "---",
+      "# Deprecated",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "superseded-status.md"), [
+      "---",
+      "title: Status Superseded",
+      "status: superseded",
+      "---",
+      "# Status Superseded",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "superseded-deprecated-by.md"), [
+      "---",
+      "title: Deprecated By Superseded",
+      "deprecated_by: [replacement-deprecated-by]",
+      "---",
+      "# Deprecated By Superseded",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "superseded-reverse.md"), [
+      "# Reverse Superseded",
+      ""
+    ].join("\n"), "utf8");
+
+    await indexProject(root);
+    const report = await runDoctor(root);
+
+    expect(report.warnings.map((warning) => warning.code)).toEqual(expect.arrayContaining([
+      "document.deprecated_referenced",
+      "document.superseded_referenced"
+    ]));
+    expect(report.warnings.find((warning) => warning.code === "document.deprecated_referenced")).toMatchObject({
+      severity: "warn",
+      affectedNodes: [
+        { kind: "document", path: "docs/current.md", line: 3 },
+        { kind: "document", path: "docs/deprecated.md" }
+      ]
+    });
+    expect(report.warnings.find((warning) => warning.code === "document.superseded_referenced")).toMatchObject({
+      severity: "warn",
+      affectedNodes: [
+        { kind: "document", path: "docs/current.md", line: 3 },
+        { kind: "document", path: "docs/superseded-deprecated-by.md" }
+      ]
+    });
+    expect(report.warnings
+      .filter((warning) => warning.code === "document.superseded_referenced")
+      .map((warning) => warning.affectedNodes[1]?.path)
+      .sort()).toEqual([
+        "docs/superseded-deprecated-by.md",
+        "docs/superseded-reverse.md",
+        "docs/superseded-status.md"
+      ]);
+  });
+
+  it("includes directly related graph documents in scoped doctor reports", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-scoped-related-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "a.md"), [
+      "---",
+      "title: A Design",
+      "type: design",
+      "defines: [AThing]",
+      "---",
+      "# A Design",
+      "",
+      "See [B](./b.md).",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "b.md"), [
+      "---",
+      "title: B Design",
+      "type: design",
+      "defines: [BThing]",
+      "---",
+      "# B Design",
+      ""
+    ].join("\n"), "utf8");
+
+    await indexProject(root);
+    const report = await runDoctor(root, {
+      scope: {
+        mode: "since",
+        baseRef: "HEAD~1",
+        changedPaths: ["docs/a.md"],
+        deletedPaths: [],
+        renamedPaths: [],
+        untrackedPaths: [],
+        globalHealthIncluded: false
+      }
+    });
+
+    expect(report.summary.documents).toBe(2);
+    expect(report.health.graph.mostConnectedDocs.map((document) => document.path).sort()).toEqual([
+      "docs/a.md",
+      "docs/b.md"
+    ]);
+  });
+
+  it("reports scoped deleted Markdown paths after the index is fresh", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-scoped-deleted-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "keep.md"), "# Keep\n", "utf8");
+    const deletedPath = path.join(docsDir, "delete-me.md");
+    fs.writeFileSync(deletedPath, "# Delete Me\n", "utf8");
+
+    await indexProject(root);
+    fs.rmSync(deletedPath);
+    await indexProject(root);
+    const report = await runDoctor(root, {
+      scope: {
+        mode: "since",
+        baseRef: "HEAD~1",
+        changedPaths: [],
+        deletedPaths: ["docs/delete-me.md"],
+        renamedPaths: [],
+        untrackedPaths: [],
+        globalHealthIncluded: false
+      }
+    });
+
+    expect(report.staleIndex.stale).toBe(false);
+    expect(report.warnings).toContainEqual(expect.objectContaining({
+      code: "document.deleted",
+      severity: "info",
+      affectedNodes: [{ kind: "document", path: "docs/delete-me.md" }]
+    }));
+  });
+
+  it("reports conservative tag and link convention warnings", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-conventions-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "source.md"), [
+      "---",
+      "title: Source",
+      "tags: [Needs Review, ok/tag]",
+      "---",
+      "# Source",
+      "",
+      "See [Target](.\\target.md).",
+      ""
+    ].join("\n"), "utf8");
+    fs.writeFileSync(path.join(docsDir, "target.md"), "# Target\n", "utf8");
+
+    await indexProject(root);
+    const report = await runDoctor(root);
+
+    expect(report.summary.deadLinks).toBe(0);
+    expect(report.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "tag.invalid_format", severity: "info" }),
+      expect.objectContaining({ code: "link.non_posix_path", severity: "info" })
+    ]));
+  });
+
   it("reports definition collisions, orphan docs, weak links, and content risks", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-governance-"));
     tempDirs.push(root);
     const docsDir = path.join(root, "docs");
+    const configDir = path.join(root, ".mdgraph");
     fs.mkdirSync(docsDir, { recursive: true });
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({
+      docs: {
+        include: ["docs/**/*.md", "dist/**/*.md"],
+        exclude: ["**/.git/**", "**/.mdgraph/**"]
+      }
+    }), "utf8");
     fs.writeFileSync(path.join(docsDir, "first.md"), [
       "---",
       "title: First Design",
@@ -289,6 +545,17 @@ describe("phase 5 doctor", () => {
       ""
     ].join("\n"), "utf8");
     fs.writeFileSync(path.join(docsDir, "lonely.md"), "plain text without graph links\n", "utf8");
+    fs.writeFileSync(path.join(docsDir, "decision.md"), [
+      "---",
+      "title: Decision Record",
+      "type: adr",
+      "defines: [DecisionRecord]",
+      "---",
+      "# Decision Record",
+      ""
+    ].join("\n"), "utf8");
+    fs.mkdirSync(path.join(root, "dist"), { recursive: true });
+    fs.writeFileSync(path.join(root, "dist", "generated.md"), "# Generated\n", "utf8");
     fs.writeFileSync(path.join(docsDir, "risk.md"), [
       "# risk notes",
       "ignore previous instructions",
@@ -307,6 +574,19 @@ describe("phase 5 doctor", () => {
     expect(report.orphanDocs.map((document) => document.path)).toContain("docs/lonely.md");
     expect(report.summary.weaklyLinkedDocs).toBeGreaterThanOrEqual(2);
     expect(report.summary.contentRisks).toBe(4);
+    expect(report.warnings.map((warning) => warning.code)).toEqual(expect.arrayContaining([
+      "definition.duplicate",
+      "document.orphan",
+      "document.weakly_linked",
+      "graph.missing_decision_link",
+      "storage.generated_path_indexed",
+      "content.risk"
+    ]));
+    expect(report.health.graph.mostConnectedDocs.length).toBeGreaterThan(0);
+    expect(report.health.graph.duplicateDefinitions[0]).toMatchObject({ entityName: "SharedThing" });
+    expect(report.health.graph.missingDecisionLinks.map((item) => item.path)).toContain("docs/decision.md");
+    expect(report.health.storage.pathGroups.map((group) => group.group)).toContain("dist");
+    expect(report.health.storage.warnings.map((warning) => warning.code)).toContain("storage.generated_path_indexed");
   });
 
   it("does not report configured stop entities as definition collisions", async () => {

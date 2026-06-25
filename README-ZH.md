@@ -102,7 +102,7 @@ node /path/to/mdgraph/dist/bin/mdgraph.js watch --semantic
 | **基于哈希的增量索引** | 仅重新索引变更的文件。内容哈希检测修改；已删除文件自动清理。 |
 | **监听模式** | 基于 Chokidar 的文件监听器，可配置防抖 — 启动时索引一次，之后每次保存都重新索引。 |
 | **可选的语义向量** | 本地确定性哈希嵌入（无需外部模型）。通过 `--semantic` 启用。 |
-| **文档健康检查（Doctor）** | 分析文档图谱：失效链接、过期源码引用、缺失定义、弱链接、潜在矛盾、内容风险。 |
+| **文档健康检查（Doctor）** | 分析文档图谱：失效链接、过期源码引用、缺失定义、弱链接、潜在矛盾、内容风险、图健康、存储健康和生命周期误用。 |
 | **MCP 服务器** | 为 AI 代理提供五种专注的工具 — 搜索、上下文、节点、追溯、状态。 |
 | **100% 本地** | SQLite 数据库位于 `.mdgraph/`。数据不会离开你的机器。 |
 
@@ -211,6 +211,9 @@ node dist/bin/mdgraph.js watch --debounce 500               # 自定义防抖时
 node dist/bin/mdgraph.js doctor                            # 文档健康度报告
 node dist/bin/mdgraph.js doctor --json                     # 机器可读
 node dist/bin/mdgraph.js doctor --strict                   # 发现问题时返回非零退出码
+node dist/bin/mdgraph.js doctor --fail-on warn             # 只按告警严重级别控制退出码
+node dist/bin/mdgraph.js doctor --changed --json           # 限定为 Git 工作区中的变更 Markdown
+node dist/bin/mdgraph.js doctor --since main --json        # 限定为某个基线提交以来的变更
 
 # 帮助
 node dist/bin/mdgraph.js help                              # 所有命令
@@ -356,7 +359,10 @@ MDGraph 使用 external-content FTS5 表，因此 chunk 文本不会再复制到
 | **孤立文档** | 非包含边为零的文档 — 完全与图谱断开连接 |
 | **潜在矛盾** | 相同归一化名称的实体定义指向了多个不同文档（保留 — 索引期间尚未生成 `CONTRADICTS` 边） |
 | **内容风险** | 标记的模式：提示注入文本、script/iframe HTML、活跃 data URI 和隐藏 Unicode 格式字符 |
+| **规范告警** | 保守的 tag 和本地链接规范，例如小写 slug tag，以及 Markdown 链接中可跨平台的 `/` 分隔符 |
 | **陈旧索引** | 当前 Markdown 文件与 `.mdgraph/graph.db` 不一致；依赖 doctor 结论前先运行 `mdgraph index` |
+| **图健康** | 可解释的摘要：最连接的文档、弱链接、重复定义、缺失定义和缺失决策链接 |
+| **存储健康** | 来自 `status --storage` 的可行动信号：生成/依赖路径组、过大的数据库、FTS shadow 膨胀、高度数节点和向量异常 |
 
 ```bash
 node dist/bin/mdgraph.js doctor
@@ -375,7 +381,7 @@ node dist/bin/mdgraph.js doctor
 # Stale index: 0
 ```
 
-Doctor 检查旨在为维护者指出可能的清理工作 — 它们不是索引的阻塞条件。当任何报告的问题都应该让命令失败时，可在 CI 或发布检查中使用 `mdgraph doctor --strict`。
+Doctor 检查旨在为维护者指出可能的清理工作 — 它们不是索引的阻塞条件。当任意 summary 问题都应该让命令失败时，可在 CI 或发布检查中使用 `mdgraph doctor --strict`；当希望按 warning 严重级别控制失败时，可使用 `--fail-on <severity>`。`--changed` 和 `--since <ref>` 会包含变更 Markdown 路径、rename/untracked/deleted 元数据，以及直接相关的一跳图谱文档；索引已刷新后，删除路径会作为 typed warning 报告。
 
 ---
 

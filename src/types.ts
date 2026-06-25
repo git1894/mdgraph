@@ -94,6 +94,21 @@ export interface DocumentFrontmatter {
   [key: string]: unknown;
 }
 
+export type FrontmatterDiagnosticCode =
+  | "front_matter.invalid_yaml"
+  | "front_matter.not_mapping"
+  | "front_matter.unclosed"
+  | "front_matter.invalid_field";
+
+export interface FrontmatterDiagnostic {
+  code: FrontmatterDiagnosticCode;
+  message: string;
+  line: number;
+  field?: string;
+  expected?: string;
+  actual?: string;
+}
+
 export interface MarkdownLink {
   text: string;
   url: string;
@@ -135,6 +150,7 @@ export interface ParsedDocument {
   title: string;
   hash: string;
   frontmatter: DocumentFrontmatter;
+  frontmatterDiagnostics: FrontmatterDiagnostic[];
   body: string;
   sections: ParsedSection[];
   markdownLinks: MarkdownLink[];

@@ -6,7 +6,7 @@ MDGraph uses this implemented pipeline: scanner -> parser -> extractor/resolver 
 
 | Area | Path | Responsibility |
 |---|---|---|
-| CLI | `src/bin/mdgraph.ts` | Commands for init, index, status, search, context, node, trace, serve, watch, and doctor. |
+| CLI | `src/bin/mdgraph.ts` | Commands for init, index, status, search, context, node, trace, serve, watch, and doctor; doctor supports `--strict`, `--fail-on`, `--changed`, and `--since`. |
 | Config | `src/config/load-config.ts` | Default config, `.mdgraph/config.json` creation, and safe config merging. |
 | Scanner | `src/scanner/file-scanner.ts` | Finds Markdown files using include/exclude globs and max file size limits. |
 | Parser | `src/parser/*` | Front matter, Markdown AST, headings, code blocks, inline code, Markdown links, and WikiLinks. |
@@ -47,9 +47,9 @@ Incremental mode deletes document-derived records for changed and removed files,
 
 ## Storage Diagnostics
 
-`GraphRepository.storageDiagnostics` powers `mdgraph status --storage`. It reports SQLite page counts, freelist state, journal/WAL checkpoint state, table/index/FTS shadow object sizes when `dbstat` is available, path-group content contribution, edge-kind distribution, high-degree nodes, and vector provider counts.
+`GraphRepository.storageDiagnostics` powers `mdgraph status --storage` and the storage portion of `mdgraph doctor`. It reports SQLite page counts, freelist state, journal/WAL checkpoint state, table/index/FTS shadow object sizes when `dbstat` is available, path-group content contribution, edge-kind distribution, high-degree nodes, and vector provider counts.
 
-The report is read-oriented observability. It does not change graph edges or doctor warnings. When storage growth is unexpected, users should first check include/exclude globs and generated/dependency/temp directories, then run `mdgraph index --full` when they need a rebuild plus `VACUUM` compaction.
+The full storage report is read-oriented observability. `doctor` promotes only a small actionable subset into storage health warnings; it does not create graph edges from storage facts. When storage growth is unexpected, users should first check include/exclude globs and generated/dependency/temp directories, then run `mdgraph index --full` when they need a rebuild plus `VACUUM` compaction.
 
 ## Query Flow
 
@@ -79,6 +79,7 @@ The MCP server intentionally exposes only five tools. Tool output is text-first 
 - The semantic provider is deterministic and local, but it is a lightweight hash embedding rather than a high-quality language model embedding.
 - Watch mode updates SQLite on file changes; long-running MCP freshness is achieved by tools opening current database state on each call.
 - Doctor checks are rule-based warnings. They first compare current files with indexed document hashes and IDs; stale indexes produce a read-only freshness diagnostic instead of mixed-time health conclusions.
-- Storage diagnostics are exposed through `status --storage`; they are not graph facts and do not expand the MCP tool surface.
+- `doctor --changed` and `doctor --since <ref>` are Git-scoped views over the same health model; they report scope metadata, scoped graph issues, directly related one-hop graph documents, deleted-document warnings, and freshness diagnostics.
+- Storage diagnostics are exposed through `status --storage` and reused by doctor for storage health summaries; they are not graph facts and do not expand the MCP tool surface.
 - `SAME_AS`, `RELATED_TO`, and `CONTRADICTS` are reserved edge kinds in the public model. The deterministic MVP does not emit them during indexing; contradiction-like signals are currently reported by `doctor` rather than inserted as graph edges.
 - The current implementation favors a compact MVP over broad Markdown/MDX dialect support.

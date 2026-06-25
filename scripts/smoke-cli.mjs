@@ -11,6 +11,8 @@ try {
   assertFile(cliPath, "Run `npm run build` before `npm run smoke:cli`.");
   runCleanProjectSmoke();
   runStrictFailureSmoke();
+  runDoctorGateSmoke();
+  runDoctorScopeSmoke();
 } finally {
   for (const root of tempRoots) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -79,6 +81,65 @@ function runStrictFailureSmoke() {
   runCli(root, ["index", "--json"]);
   const result = runCli(root, ["doctor", "--strict"], { expectedExitCode: 1 });
   assert(result.stdout.includes("Dead links") || result.stdout.includes("deadLinks"), "strict doctor output should include health details");
+}
+
+function runDoctorGateSmoke() {
+  const root = makeTempRoot("mdgraph-cli-fail-on-");
+  const docsDir = path.join(root, "docs");
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(path.join(docsDir, "weak.md"), "# Weak\n", "utf8");
+
+  runCli(root, ["index", "--json"]);
+  runCli(root, ["doctor", "--fail-on", "error"]);
+  runCli(root, ["doctor", "--fail-on", "info"], { expectedExitCode: 1 });
+}
+
+function runDoctorScopeSmoke() {
+  const root = makeTempRoot("mdgraph-cli-scope-");
+  const docsDir = path.join(root, "docs");
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(path.join(docsDir, "stable.md"), "# Stable\n", "utf8");
+  fs.writeFileSync(path.join(docsDir, "changed.md"), "# Changed\n\nSee [Stable](./stable.md).\n", "utf8");
+  fs.writeFileSync(path.join(docsDir, "deleted.md"), "# Deleted\n", "utf8");
+  fs.writeFileSync(path.join(docsDir, "rename-source.md"), "# Rename Source\n", "utf8");
+
+  runCli(root, ["index", "--json"]);
+  runGit(root, ["init"]);
+  runGit(root, ["config", "user.email", "mdgraph@example.test"]);
+  runGit(root, ["config", "user.name", "MDGraph Smoke"]);
+  runGit(root, ["add", "."]);
+  runGit(root, ["commit", "-m", "initial"]);
+
+  fs.appendFileSync(path.join(docsDir, "changed.md"), "\nSee [missing](./missing.md).\n", "utf8");
+  fs.rmSync(path.join(docsDir, "deleted.md"));
+  runGit(root, ["mv", "docs/rename-source.md", "docs/renamed.md"]);
+  fs.writeFileSync(path.join(docsDir, "new.md"), "# New\n", "utf8");
+  const changed = runCliJson(root, ["doctor", "--changed", "--json"]);
+  assertEqual(changed.scope.mode, "changed", "doctor --changed should report changed scope");
+  assert(changed.scope.changedPaths.includes("docs/changed.md"), "doctor --changed should include modified markdown");
+  assert(changed.scope.deletedPaths.includes("docs/deleted.md"), "doctor --changed should include deleted markdown");
+  assert(changed.scope.renamedPaths.some((item) => item.from === "docs/rename-source.md" && item.to === "docs/renamed.md"), "doctor --changed should include renamed markdown");
+  assert(changed.scope.untrackedPaths.includes("docs/new.md"), "doctor --changed should include untracked markdown");
+  assert(changed.warnings.every((warning) => warning.code === "index.stale"), "stale scoped report should only include freshness warnings");
+
+  runCli(root, ["index", "--json"]);
+  runGit(root, ["add", "."]);
+  runGit(root, ["commit", "-m", "changed docs"]);
+  const since = runCliJson(root, ["doctor", "--since", "HEAD~1", "--json"]);
+  assertEqual(since.scope.mode, "since", "doctor --since should report since scope");
+  assertEqual(since.scope.baseRef, "HEAD~1", "doctor --since should preserve base ref");
+  assert(since.scope.changedPaths.includes("docs/changed.md"), "doctor --since should include modified markdown");
+  assert(since.scope.deletedPaths.includes("docs/deleted.md"), "doctor --since should include deleted markdown");
+  assert(since.scope.renamedPaths.some((item) => item.from === "docs/rename-source.md" && item.to === "docs/renamed.md"), "doctor --since should include renamed markdown");
+  assert(since.warnings.some((warning) => warning.code === "document.deleted"), "doctor --since should warn about deleted markdown after reindex");
+  assert(since.health.graph.mostConnectedDocs.some((item) => item.path === "docs/stable.md"), "doctor --since should include directly related unchanged markdown");
+
+  runCli(root, ["doctor", "--since", "missing-ref"], { expectedExitCode: 1 });
+
+  const noGitRoot = makeTempRoot("mdgraph-cli-scope-no-git-");
+  fs.mkdirSync(path.join(noGitRoot, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(noGitRoot, "docs", "note.md"), "# Note\n", "utf8");
+  runCli(noGitRoot, ["doctor", "--changed"], { expectedExitCode: 1 });
 }
 
 function writeCleanDocs(root) {
@@ -163,6 +224,23 @@ function runCli(cwd, args, options = {}) {
       `cwd: ${cwd}`,
       `expected exit: ${expectedExitCode}`,
       `actual exit: ${result.status}`,
+      `stdout:\n${result.stdout}`,
+      `stderr:\n${result.stderr}`
+    ].join("\n"));
+  }
+  return result;
+}
+
+function runGit(cwd, args) {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true
+  });
+  if (result.status !== 0) {
+    throw new Error([
+      `Git command failed: git ${args.join(" ")}`,
+      `cwd: ${cwd}`,
       `stdout:\n${result.stdout}`,
       `stderr:\n${result.stderr}`
     ].join("\n"));

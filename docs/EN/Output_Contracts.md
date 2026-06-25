@@ -103,8 +103,13 @@ Per-case `expected` includes expected documents, sections, entities, edge kinds,
 `mdgraph doctor --json` returns:
 
 - `projectRoot`.
+- `scope`: `mode`, `baseRef`, `changedPaths`, `deletedPaths`, `renamedPaths`, `untrackedPaths`, and `globalHealthIncluded`.
 - `summary`: `documents`, `orphanDocs`, `deadLinks`, `staleSourceRefs`, `missingDefinitions`, `weaklyLinkedDocs`, `possibleContradictions`, `contentRisks`, and `staleIndex`.
 - `staleIndex`: `stale`, `recommendation`, and `issues`.
-- Issue arrays: `orphanDocs`, `deadLinks`, `staleSourceRefs`, `missingDefinitions`, `weaklyLinkedDocs`, `possibleContradictions`, and `contentRisks`.
+- Issue arrays: `orphanDocs`, `deadLinks`, `staleSourceRefs`, `missingDefinitions`, `weaklyLinkedDocs`, `possibleContradictions`, `contentRisks`, and `frontmatterDiagnostics`.
+- `warnings`: typed, action-oriented doctor warnings. Each warning includes `code`, `severity`, `message`, `evidence`, `affectedNodes`, and `remediation`.
+- `health`: `graph` and `storage` summaries. Graph health includes `mostConnectedDocs`, `weaklyLinkedDocs`, `duplicateDefinitions`, `missingDefinitions`, and `missingDecisionLinks`. Storage health includes database size, path groups, FTS shadow sizing, high-degree nodes, vector counts, and storage warnings.
 
-`mdgraph doctor --strict` keeps the same output shape. It exits with a non-zero status when any summary issue count other than `documents` is greater than zero.
+Initial warning codes cover the existing doctor checks, front matter diagnostics, lifecycle governance, graph health, storage health, and conservative convention linting: `index.stale`, `link.dead`, `source_ref.missing`, `definition.missing`, `definition.duplicate`, `content.risk`, `document.orphan`, `document.deleted`, `document.weakly_linked`, `document.deprecated_referenced`, `document.superseded_referenced`, `graph.missing_decision_link`, `storage.generated_path_indexed`, `storage.database_oversized`, `storage.fts_shadow_large`, `storage.high_degree_node`, `storage.vector_anomaly`, `front_matter.invalid_yaml`, `front_matter.not_mapping`, `front_matter.unclosed`, `front_matter.invalid_field`, `tag.invalid_format`, and `link.non_posix_path`.
+
+`mdgraph doctor --strict` keeps the same output shape and exits with a non-zero status when any summary issue count other than `documents` is greater than zero. `mdgraph doctor --fail-on <severity>` adds a typed warning gate without changing `--strict`, and `--changed` / `--since <ref>` return scoped reports with explicit scope metadata. Scoped reports include scoped Markdown paths plus directly related one-hop graph documents; deleted Markdown paths are preserved in scope metadata and reported with `document.deleted` after the index is fresh. Global storage summaries may still be present for observability, but storage warnings are omitted when `globalHealthIncluded` is `false`.

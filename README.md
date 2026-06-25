@@ -102,7 +102,7 @@ When an AI agent needs to understand your project's architecture, it typically g
 | **Hash-Based Incremental Indexing** | Only re-index changed files. Content hashes detect modifications; removed files are cleaned up automatically. |
 | **Watch Mode** | Chokidar-based file watcher with configurable debounce — indexes on startup, then re-indexes on every save. |
 | **Optional Semantic Vectors** | Local deterministic hash embeddings (no external model). Enable with `--semantic`. |
-| **Documentation Health (Doctor)** | Lints your doc graph: dead links, stale source refs, missing definitions, weak links, possible contradictions, content risks. |
+| **Documentation Health (Doctor)** | Lints your doc graph: dead links, stale source refs, missing definitions, weak links, possible contradictions, content risks, graph health, storage health, and lifecycle misuse. |
 | **MCP Server** | Five focused tools for AI agents — search, context, node, trace, status. |
 | **100% Local** | SQLite database in `.mdgraph/`. No data leaves your machine. |
 
@@ -211,6 +211,9 @@ node dist/bin/mdgraph.js watch --debounce 500               # Custom debounce (m
 node dist/bin/mdgraph.js doctor                            # Documentation health report
 node dist/bin/mdgraph.js doctor --json                     # Machine-readable
 node dist/bin/mdgraph.js doctor --strict                   # Non-zero exit when issues are found
+node dist/bin/mdgraph.js doctor --fail-on warn             # Typed warning gate without changing --strict
+node dist/bin/mdgraph.js doctor --changed --json           # Scope to changed Markdown in the Git worktree
+node dist/bin/mdgraph.js doctor --since main --json        # Scope to changes since a base ref
 
 # Help
 node dist/bin/mdgraph.js help                              # All commands
@@ -356,7 +359,10 @@ Before reporting graph health, doctor compares current Markdown files with the S
 | **Orphan Docs** | Documents with zero non-containment edges — completely disconnected from the graph |
 | **Possible Contradictions** | Entity definitions where the _same normalized name_ points to multiple distinct documents (reserved — `CONTRADICTS` edges are not yet emitted during indexing) |
 | **Content Risks** | Flagged patterns: prompt-injection text, script/iframe HTML, active data URIs, and hidden Unicode format characters |
+| **Convention Warnings** | Conservative tag and local-link conventions, such as lowercase slug tags and portable `/` separators in Markdown links |
 | **Stale Index** | Current Markdown files no longer match `.mdgraph/graph.db`; run `mdgraph index` before relying on doctor conclusions |
+| **Graph Health** | Explainable summaries for the most connected docs, weak links, duplicate definitions, missing definitions, and missing decision links |
+| **Storage Health** | Actionable storage signals from `status --storage`, including generated/dependency path groups, oversized databases, FTS shadow growth, high-degree nodes, and vector anomalies |
 
 ```bash
 node dist/bin/mdgraph.js doctor
@@ -375,7 +381,7 @@ node dist/bin/mdgraph.js doctor
 # Stale index: 0
 ```
 
-Doctor checks are designed to point maintainers at likely cleanup work — they are not a gate on indexing. Use `mdgraph doctor --strict` in CI or release checks when any reported issue should fail the command.
+Doctor checks are designed to point maintainers at likely cleanup work — they are not a gate on indexing. Use `mdgraph doctor --strict` in CI or release checks when any reported summary issue should fail the command, and `--fail-on <severity>` when warning severity should control failure instead. `--changed` and `--since <ref>` include changed Markdown paths, renamed/untracked/deleted path metadata, and directly related one-hop graph documents; deleted paths are reported as typed warnings after the index is fresh.
 
 ---
 

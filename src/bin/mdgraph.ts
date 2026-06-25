@@ -2,7 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
-import { runDoctor, formatDoctorReport } from "../analysis/doctor.js";
+import { formatDoctorReport, runDoctor, type DoctorWarning, type DoctorWarningSeverity } from "../analysis/doctor.js";
+import { collectDoctorScope } from "../analysis/doctor-scope.js";
 import { databasePath, initConfig, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeResolution } from "../db/repositories.js";
@@ -209,10 +210,25 @@ program
   .description("Analyze documentation graph health and governance issues")
   .option("--json", "Print JSON output")
   .option("--strict", "Exit with a non-zero status if any issue is reported")
-  .action(async (options: { json?: boolean; strict?: boolean }) => {
-    const report = await runDoctor(process.cwd());
+  .option("--fail-on <severity>", "Exit with non-zero status when warnings at or above severity exist (error, warn, info)")
+  .option("--changed", "Limit doctor output to changed Markdown paths in the Git worktree")
+  .option("--since <ref>", "Limit doctor output to Markdown paths changed since a Git ref")
+  .action(async (options: { json?: boolean; strict?: boolean; failOn?: string; changed?: boolean; since?: string }) => {
+    if (options.changed && options.since) {
+      throw new Error("Use either --changed or --since <ref>, not both.");
+    }
+    const failOn = parseDoctorSeverity(options.failOn);
+    const scope = options.changed
+      ? collectDoctorScope(process.cwd(), { mode: "changed" })
+      : options.since
+        ? collectDoctorScope(process.cwd(), { mode: "since", baseRef: options.since })
+        : undefined;
+    const report = await runDoctor(process.cwd(), { scope });
     printResult(options.json, report, formatDoctorReport(report));
     if (options.strict && doctorIssueCount(report.summary) > 0) {
+      process.exitCode = 1;
+    }
+    if (failOn && doctorWarningsAtOrAbove(report.warnings, failOn)) {
       process.exitCode = 1;
     }
   });
@@ -405,6 +421,25 @@ function doctorIssueCount(summary: Awaited<ReturnType<typeof runDoctor>>["summar
   return Object.entries(summary)
     .filter(([key]) => key !== "documents")
     .reduce((total, [, value]) => total + Number(value), 0);
+}
+
+function parseDoctorSeverity(value: string | undefined): DoctorWarningSeverity | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === "error" || value === "warn" || value === "info") {
+    return value;
+  }
+  throw new Error(`Expected --fail-on to be one of error, warn, or info; got ${value}`);
+}
+
+function doctorWarningsAtOrAbove(warnings: DoctorWarning[], severity: DoctorWarningSeverity): boolean {
+  const threshold = doctorSeverityRank(severity);
+  return warnings.some((warning) => doctorSeverityRank(warning.severity) <= threshold);
+}
+
+function doctorSeverityRank(severity: DoctorWarningSeverity): number {
+  return severity === "error" ? 0 : severity === "warn" ? 1 : 2;
 }
 
 function validateProjectRoot(projectRoot: string): string {

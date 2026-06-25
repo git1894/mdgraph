@@ -42,6 +42,7 @@ export function parseMarkdownDocument(projectRoot: string, absolutePath: string)
   const parsed = parseFrontmatter(raw);
   const body = parsed.content;
   const frontmatter = normalizeFrontmatter(parsed.data);
+  const frontmatterDiagnostics = parsed.diagnostics;
   const relativePath = relativeUnixPath(projectRoot, absolutePath);
   const id = stableId("document", frontmatter.id ?? relativePath.toLowerCase());
   const tree = unified().use(remarkParse).use(remarkGfm).parse(body) as MdastNode;
@@ -64,6 +65,7 @@ export function parseMarkdownDocument(projectRoot: string, absolutePath: string)
     title,
     hash: contentHash(raw),
     frontmatter,
+    frontmatterDiagnostics,
     body,
     sections,
     markdownLinks,
@@ -73,9 +75,9 @@ export function parseMarkdownDocument(projectRoot: string, absolutePath: string)
   };
 }
 
-function parseFrontmatter(raw: string): { data: Record<string, unknown>; content: string; bodyLineOffset: number } {
+function parseFrontmatter(raw: string): { data: Record<string, unknown>; content: string; bodyLineOffset: number; diagnostics: ParsedDocument["frontmatterDiagnostics"] } {
   const parsed = parseFrontmatterBlock(raw);
-  return { data: parsed.data, content: parsed.body, bodyLineOffset: parsed.bodyLineOffset };
+  return { data: parsed.data, content: parsed.body, bodyLineOffset: parsed.bodyLineOffset, diagnostics: parsed.diagnostics };
 }
 
 function collectHeadings(tree: MdastNode, bodyLineOffset: number): HeadingInfo[] {

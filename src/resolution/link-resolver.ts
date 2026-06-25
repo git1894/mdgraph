@@ -40,13 +40,14 @@ export class LinkResolver {
 
   resolveDocumentRef(reference: string, fromDocument?: ParsedDocument, anchor?: string): ResolvedReference | undefined {
     const parsedReference = splitReferenceAnchor(reference, anchor);
-    const normalizedReference = normalizeReference(parsedReference.reference);
+    const portableReference = normalizePath(parsedReference.reference);
+    const normalizedReference = normalizeReference(portableReference);
     if (!normalizedReference && !(fromDocument && parsedReference.anchor)) {
       return undefined;
     }
 
-    const joinedReference = fromDocument && normalizedReference && isRelativeMarkdownPath(parsedReference.reference)
-      ? normalizeReference(path.posix.normalize(path.posix.join(path.posix.dirname(fromDocument.relativePath), parsedReference.reference)))
+    const joinedReference = fromDocument && normalizedReference && isRelativeMarkdownPath(portableReference)
+      ? normalizeReference(path.posix.normalize(path.posix.join(path.posix.dirname(fromDocument.relativePath), portableReference)))
       : normalizedReference;
 
     const document = joinedReference

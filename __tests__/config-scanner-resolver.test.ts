@@ -145,6 +145,7 @@ describe("LinkResolver", () => {
     expect(child).toBeDefined();
     expect(index).toBeDefined();
     expect(resolver.resolveMarkdownUrl("../target.md#target-section", child!)?.sectionId).toBeDefined();
+    expect(resolver.resolveMarkdownUrl(".\\target.md", index!)?.documentId).toBe(documents.find((document) => document.relativePath.endsWith("target.md"))!.id);
     expect(resolver.resolveDocumentRef("docs-index")?.documentId).toBe(index!.id);
     expect(resolver.resolveDocumentRef("docs\\target.md")?.documentId).toBe(documents.find((document) => document.relativePath.endsWith("target.md"))!.id);
     expect(resolver.resolveDocumentRef("missing.md")).toBeUndefined();

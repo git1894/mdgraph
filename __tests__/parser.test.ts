@@ -138,7 +138,51 @@ describe("parseMarkdownDocument", () => {
 
     expect(parsed.title).toBe("Broken");
     expect(parsed.frontmatter.title).toBeUndefined();
+    expect(parsed.frontmatterDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "front_matter.invalid_yaml", line: 2 })
+    ]));
     expect(parsed.sections[0]).toMatchObject({ heading: "Broken", startLine: 4 });
+  });
+
+  it("reports front matter diagnostics without blocking parsing", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-parser-frontmatter-diagnostics-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+
+    const arrayFile = path.join(docsDir, "array.md");
+    fs.writeFileSync(arrayFile, ["---", "- not", "- mapping", "---", "# Array", ""].join("\n"), "utf8");
+    expect(parseMarkdownDocument(root, arrayFile).frontmatterDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "front_matter.not_mapping", line: 2 })
+    ]));
+
+    const unclosedFile = path.join(docsDir, "unclosed.md");
+    fs.writeFileSync(unclosedFile, ["---", "title: Missing Close", "# Missing Close", ""].join("\n"), "utf8");
+    expect(parseMarkdownDocument(root, unclosedFile).frontmatterDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "front_matter.unclosed", line: 1 })
+    ]));
+
+    const fieldsFile = path.join(docsDir, "fields.md");
+    fs.writeFileSync(fieldsFile, [
+      "---",
+      "title: 42",
+      "type: unknown-kind",
+      "tags: [docs, 7]",
+      "trust_tier: maybe",
+      "---",
+      "# Fields",
+      ""
+    ].join("\n"), "utf8");
+    const diagnostics = parseMarkdownDocument(root, fieldsFile).frontmatterDiagnostics;
+
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(expect.arrayContaining(["front_matter.invalid_field"]));
+    expect(diagnostics.map((diagnostic) => diagnostic.field).sort()).toEqual(["tags", "title", "trust_tier", "type"]);
+    expect(diagnostics.map((diagnostic) => [diagnostic.field, diagnostic.line]).sort()).toEqual([
+      ["tags", 4],
+      ["title", 2],
+      ["trust_tier", 5],
+      ["type", 3]
+    ]);
   });
 
   it("keeps section ids stable when leading lines are inserted", () => {
