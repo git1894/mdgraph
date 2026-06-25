@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphEntity, MDGraphConfig, SearchResult } from "../types.js";
+import type { EdgeKind, GraphEdge, GraphEntity, MDGraphConfig, Provenance, SearchResult, SourceRef, TrustTier } from "../types.js";
 import { GraphRepository, type ChunkSearchRow, type NodeRecord } from "../db/repositories.js";
 import { searchGraph } from "./search.js";
 import { normalizePath, uniqueStrings } from "../utils/text.js";
@@ -12,7 +12,24 @@ export interface ContextItem {
   lines?: { start: number; end: number };
   reason: string;
   matchedEntities: string[];
+  sourceRefs?: ContextSourceRef[];
+  riskNotes?: string[];
   content: string;
+}
+
+export interface ContextSourceRef {
+  path: string;
+  edgeKind: Extract<EdgeKind, "IMPLEMENTS" | "REFERENCES_SOURCE">;
+  provenance: Provenance;
+  confidence: number;
+}
+
+export interface ContextAutoMode {
+  name: "auto" | "manual";
+  searchLimit: number;
+  maxDepth: number;
+  maxChars: number;
+  reason: string;
 }
 
 export interface ContextResult {
@@ -21,6 +38,7 @@ export interface ContextResult {
   usedChars: number;
   knownFiles?: string[];
   suggestedNextQueries?: string[];
+  mode?: ContextAutoMode;
   items: ContextItem[];
   debug?: ContextDebug;
 }
@@ -41,6 +59,9 @@ export interface ContextDebug {
 
 interface ContextCandidate extends ContextItem {
   nodeId: string;
+  documentId: string;
+  documentStatus: string;
+  trustTier: TrustTier;
   score: number;
   direct: boolean;
 }
@@ -56,6 +77,9 @@ export interface ContextBuildOptions {
   debug?: boolean;
   maxChars?: number;
   knownFiles?: string[];
+  searchLimit?: number;
+  maxDepth?: number;
+  mode?: ContextAutoMode;
 }
 
 interface ContextCollection {
@@ -77,12 +101,14 @@ export function buildContext(
 ): ContextResult {
   const knownFiles = normalizeKnownFiles(options.knownFiles ?? []);
   const maxChars = positiveIntegerOr(options.maxChars, config.search.maxContextChars);
-  const results = searchGraph(repository, config, query, config.search.defaultLimit * 2);
-  const collection = collectContextCandidates(repository, config, results);
+  const searchLimit = positiveIntegerOr(options.searchLimit, config.search.defaultLimit * 2);
+  const maxDepth = positiveIntegerOr(options.maxDepth, config.search.maxDepth);
+  const results = searchGraph(repository, config, query, searchLimit);
+  const collection = collectContextCandidates(repository, config, results, maxDepth);
   const candidates = knownFiles.length
     ? mergeKnownFileCandidates(repository, collection.candidates, knownFiles)
     : collection.candidates;
-  const packed = packContext(query, candidates, maxChars);
+  const packed = packContext(query, enrichContextCandidates(repository, candidates), maxChars, options.mode);
   const result = addAgentHints(packed.result, knownFiles);
   if (!options.debug) {
     return result;
@@ -154,19 +180,19 @@ function candidateFromKnownRow(row: ChunkSearchRow, reason: string, index: numbe
     matchedEntities: [],
     content: row.chunk.content,
     nodeId: row.section?.id ?? row.document.id,
+    documentId: row.document.id,
+    documentStatus: row.document.status,
+    trustTier: row.document.trustTier,
     score: 10_000 - index,
     direct: true
   };
 }
 
 function addAgentHints(result: ContextResult, knownFiles: string[]): ContextResult {
-  if (!knownFiles.length) {
-    return result;
-  }
   const suggestedNextQueries = suggestedQueries(result, knownFiles);
   return {
     ...result,
-    knownFiles,
+    knownFiles: knownFiles.length ? knownFiles : undefined,
     suggestedNextQueries: suggestedNextQueries.length ? suggestedNextQueries : undefined
   };
 }
@@ -201,9 +227,9 @@ function positiveIntegerOr(value: number | undefined, fallback: number): number 
 function collectContextCandidates(
   repository: GraphRepository,
   config: MDGraphConfig,
-  results: SearchResult[]
+  results: SearchResult[],
+  maxDepth: number
 ): ContextCollection {
-  const maxDepth = config.search.maxDepth;
   let remainingExpansionNodes = Math.max(DEFAULT_MAX_CONTEXT_NODES, config.search.defaultLimit * 2);
   const candidates = new Map<string, ContextCandidate>();
   const queue: ExpansionQueueItem[] = [];
@@ -270,6 +296,9 @@ function collectContextCandidates(
           matchedEntities: [],
           content: row.chunk.content,
           nodeId: row.section?.id ?? row.document.id,
+          documentId: row.document.id,
+          documentStatus: row.document.status,
+          trustTier: row.document.trustTier,
           score,
           direct: false
         });
@@ -288,6 +317,56 @@ function collectContextCandidates(
       visitedNodes: visited.size
     }
   };
+}
+
+function enrichContextCandidates(repository: GraphRepository, candidates: ContextCandidate[]): ContextCandidate[] {
+  return candidates.map((candidate) => {
+    const sourceRefs = sourceRefsForCandidate(repository, candidate);
+    const riskNotes = riskNotesForCandidate(candidate);
+    return {
+      ...candidate,
+      sourceRefs: sourceRefs.length ? sourceRefs : undefined,
+      riskNotes: riskNotes.length ? riskNotes : undefined
+    };
+  });
+}
+
+function sourceRefsForCandidate(repository: GraphRepository, candidate: ContextCandidate): ContextSourceRef[] {
+  const edgeNodes = uniqueStrings([candidate.nodeId, candidate.documentId]);
+  const refs = new Map<string, ContextSourceRef>();
+  for (const nodeId of edgeNodes) {
+    for (const edge of repository.edgesForNode(nodeId)) {
+      if (edge.kind !== "IMPLEMENTS" && edge.kind !== "REFERENCES_SOURCE") {
+        continue;
+      }
+      const otherId = edge.fromId === nodeId ? edge.toId : edge.fromId;
+      const other = repository.getNode(otherId);
+      if (other?.kind !== "source_ref") {
+        continue;
+      }
+      const sourceRef = other.data as SourceRef;
+      const ref = {
+        path: sourceRef.path,
+        edgeKind: edge.kind,
+        provenance: edge.provenance,
+        confidence: edge.confidence
+      };
+      refs.set(`${ref.path}:${ref.edgeKind}`, ref);
+    }
+  }
+  return [...refs.values()].sort((left, right) => left.path.localeCompare(right.path) || left.edgeKind.localeCompare(right.edgeKind));
+}
+
+function riskNotesForCandidate(candidate: ContextCandidate): string[] {
+  const notes: string[] = [];
+  const status = candidate.documentStatus.trim().toLowerCase();
+  if (status && status !== "active") {
+    notes.push(`document status: ${candidate.documentStatus}`);
+  }
+  if (candidate.trustTier !== "authored" && candidate.trustTier !== "validated") {
+    notes.push(`trust tier: ${candidate.trustTier}`);
+  }
+  return notes;
 }
 
 function orderContextCandidates(candidates: ContextCandidate[]): ContextCandidate[] {
@@ -327,7 +406,7 @@ function compareContextCandidates(left: ContextCandidate, right: ContextCandidat
   return right.score - left.score;
 }
 
-function packContext(query: string, candidates: ContextCandidate[], maxChars: number): PackedContext {
+function packContext(query: string, candidates: ContextCandidate[], maxChars: number, mode: ContextAutoMode | undefined): PackedContext {
   const items: ContextItem[] = [];
   let usedChars = 0;
   let budgetTruncatedItems = 0;
@@ -356,11 +435,13 @@ function packContext(query: string, candidates: ContextCandidate[], maxChars: nu
       lines: candidate.lines,
       reason: candidate.reason,
       matchedEntities: candidate.matchedEntities,
+      sourceRefs: candidate.sourceRefs,
+      riskNotes: candidate.riskNotes,
       content
     });
   }
 
-  return { result: { query, maxChars, usedChars, items }, budgetTruncatedItems, budgetSkippedItems };
+  return { result: { query, maxChars, usedChars, mode, items }, budgetTruncatedItems, budgetSkippedItems };
 }
 
 function candidateFromSearchResult(result: SearchResult): ContextCandidate {
@@ -373,6 +454,9 @@ function candidateFromSearchResult(result: SearchResult): ContextCandidate {
     matchedEntities: result.matchedEntities.map(formatMatchedEntity),
     content: result.content,
     nodeId: result.section?.id ?? result.document.id,
+    documentId: result.document.id,
+    documentStatus: result.document.status,
+    trustTier: result.document.trustTier,
     score: result.score,
     direct: true
   };

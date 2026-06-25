@@ -13,7 +13,7 @@
 5. 需要回答两个文档、实体或 source reference 之间如何关联时，用 `mdgraph_trace`。
 6. 只有在索引不可用、返回上下文不足、需要精确相邻原文，或用户明确要求读文件时，才回退到 raw file reads。
 
-对于 coding task，把任务描述写进 `mdgraph_context` 查询，并通过 `knownFiles` 传入已知文件路径。这样 MDGraph 可以返回更像 task-start documentation brief 的结果：相关文档、source refs、provenance 和确定性的 `suggestedNextQueries`。
+对于 coding task，把任务描述写进 `mdgraph_context` 查询，并通过 `knownFiles` 传入已知文件路径。这样 MDGraph 可以返回更像 task-start documentation brief 的结果：相关文档、source refs、risk notes、provenance、确定性的 auto-mode metadata 和 `suggestedNextQueries`。
 
 ## 共享 Instruction Template
 
@@ -25,7 +25,7 @@ Use MDGraph before reading multiple Markdown files manually.
 - Use mdgraph_search for quick keyword/entity/path lookup.
 - Use mdgraph_node for known document paths, section anchors, entities, source paths, or graph ids.
 - Use mdgraph_trace for relationship questions between two known documents, entities, or source references.
-- Prefer returned context when it includes enough content, reasons, provenance, and source refs.
+- Prefer returned context when it includes enough content, reasons, provenance, source refs, and risk notes.
 - Fall back to normal file reads when MDGraph is inactive, stale for the task, too sparse, or when exact source text is required.
 
 Do not treat MDGraph as hidden memory, a source AST index, or an authority beyond the indexed Markdown corpus.
@@ -96,5 +96,6 @@ Task-start documentation brief：
 
 - MDGraph 索引 Markdown 文档，不索引源码 AST 或任意文件。
 - MCP surface 故意保持五个工具：search、context、node、trace、status。
-- 当前预算控制是通过项目配置、context packing 和 MCP `maxChars` 实现的字符预算；宿主侧 token budget 仍应由 agent 或 client 处理。
+- Agent auto mode 是确定性且很窄的策略：MCP search/context 会根据 query 形态、索引规模、`knownFiles` 和 `maxChars` 选择默认 limit、depth 和字符预算；宿主侧 token budget 仍应由 agent 或 client 处理。
+- `mdgraph_status` 会做轻量 Markdown 路径和 mtime freshness 检查；完整 stale-index hash 检查和文档健康结论仍应使用 `mdgraph doctor --json`。
 - 有限范围的 file-read 对比案例记录在 [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md)，但完整真实 agent A/B benchmark 尚未运行。

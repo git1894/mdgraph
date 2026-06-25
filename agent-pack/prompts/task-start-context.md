@@ -7,7 +7,7 @@ Use this when a coding task mentions docs, designs, ADRs, runbooks, APIs, source
    - `query`: the user's task text plus the main domain terms.
    - `knownFiles`: project-relative paths the user already named, when available.
    - `maxChars`: a smaller character budget when the host context is tight.
-3. Use the returned context directly when it has enough content, reasons, provenance, and source refs.
+3. Use the returned context directly when it has enough content, reasons, provenance, source refs, and risk notes.
 4. Read raw files only for exact sections that still need inspection.
 
 Do not run `mdgraph index` unless the user asks to create or refresh the index.

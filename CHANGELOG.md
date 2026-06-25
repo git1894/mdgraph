@@ -6,6 +6,18 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.3.1 - 2026-06-24
+
+### Added
+
+- Added deterministic MCP agent auto-mode metadata for search/context limit, depth, and character-budget decisions.
+- Added structured context `sourceRefs` and `riskNotes` so task-start briefs expose source-reference links and non-active/generated document cautions.
+
+### Changed
+
+- Made MCP `mdgraph_status` perform a lightweight Markdown freshness check with `fresh`, `stale`, or `unknown` state before agents rely on an index.
+- Broadened deterministic `suggestedNextQueries` so context results can suggest follow-up node/search calls even when `knownFiles` is absent.
+
 ## 0.3.0 - 2026-06-24
 
 ### Added

@@ -13,7 +13,7 @@ Use MDGraph as an invited documentation context layer, not as hidden memory and 
 5. Use `mdgraph_trace` for relationship questions such as how a design depends on an ADR or how a source path connects to a runbook.
 6. Read raw files only when the index is unavailable, the returned context is insufficient, exact neighboring prose is required, or the user explicitly asks for file-level inspection.
 
-For coding tasks, include the task text in the `mdgraph_context` query and pass any known file paths through `knownFiles`. This gives MDGraph enough signal to return a task-start documentation brief with relevant docs, source refs, provenance, and deterministic `suggestedNextQueries`.
+For coding tasks, include the task text in the `mdgraph_context` query and pass any known file paths through `knownFiles`. This gives MDGraph enough signal to return a task-start documentation brief with relevant docs, source refs, risk notes, provenance, deterministic auto-mode metadata, and `suggestedNextQueries`.
 
 ## Shared Instruction Template
 
@@ -25,7 +25,7 @@ Use MDGraph before reading multiple Markdown files manually.
 - Use mdgraph_search for quick keyword/entity/path lookup.
 - Use mdgraph_node for known document paths, section anchors, entities, source paths, or graph ids.
 - Use mdgraph_trace for relationship questions between two known documents, entities, or source references.
-- Prefer returned context when it includes enough content, reasons, provenance, and source refs.
+- Prefer returned context when it includes enough content, reasons, provenance, source refs, and risk notes.
 - Fall back to normal file reads when MDGraph is inactive, stale for the task, too sparse, or when exact source text is required.
 
 Do not treat MDGraph as hidden memory, a source AST index, or an authority beyond the indexed Markdown corpus.
@@ -96,5 +96,6 @@ Documentation health check:
 
 - MDGraph indexes Markdown documents, not source ASTs or arbitrary files.
 - The MCP surface intentionally stays at five tools: search, context, node, trace, and status.
-- The current budget control is character-based through project config, context packing, and MCP `maxChars`. Token-specific host budgets should be handled by the agent or client.
+- Agent auto mode is deterministic and narrow: MCP search/context choose default limit, depth, and character budget from query shape, index size, `knownFiles`, and `maxChars`. Token-specific host budgets should still be handled by the agent or client.
+- `mdgraph_status` performs a lightweight Markdown path and mtime freshness check. Use `mdgraph doctor --json` for full stale-index hashing and documentation health conclusions.
 - Scoped file-read comparison case notes are recorded in [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md), but a full real-agent A/B benchmark has not been run yet.
