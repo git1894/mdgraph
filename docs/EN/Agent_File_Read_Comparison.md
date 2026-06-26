@@ -2,6 +2,8 @@
 
 These notes record early 0.3 evidence for query-first, file-read-second agent workflows. They are engineering case notes, not a completed real-agent A/B benchmark.
 
+For the v0.6 structured benchmark contract, use `mdgraph report --benchmark benchmark-runs.json --json`. That report consumes paired `with_mdgraph` / `without_mdgraph` run records and calculates aggregate deltas without storing full transcripts.
+
 ## Method
 
 The comparison uses two deterministic sources already in the repository:
@@ -63,7 +65,7 @@ Recorded read delta: at least `6` direct Markdown reads after discovery become `
 
 ## Follow-Up Measurement
 
-A real 0.3 A/B benchmark should capture full agent transcripts for the same questions and compare:
+The v0.6 benchmark report should capture structured run records for the same questions and compare:
 
 - Direct file reads and text searches.
 - MDGraph tool calls.
@@ -71,4 +73,4 @@ A real 0.3 A/B benchmark should capture full agent transcripts for the same ques
 - Whether raw file fallback was still required.
 - Time and token budget.
 
-Until that benchmark exists, these notes should be used as scoped evidence for agent integration design, not as a product-level performance claim.
+Full transcripts should stay outside public docs. These notes remain scoped design evidence; the reproducible A/B surface is the structured `report --benchmark` input/output contract.

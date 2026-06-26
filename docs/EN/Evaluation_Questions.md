@@ -70,4 +70,4 @@ For each question, compare agent behavior with and without MDGraph attached:
 - `mdgraph eval` metrics: top-K document recall, expected-section recall, context precision, trace success, latency, returned character count, budget fit, fanout, context diversity, reason coverage, and ranking reason coverage.
 - `mdgraph eval` ranking report: query mode, RRF search fusion channels, MMR-style context packing strategy, optional reranker status, and semantic-active case count.
 
-The current repository has unit, integration, MCP, CLI, semantic, incremental, doctor, and retrieval-evaluation tests, but it has not yet run a real agent A/B benchmark on these questions.
+Use `mdgraph report --benchmark benchmark-runs.json --json` for v0.6 A/B reporting on these questions. It consumes structured run records and reports aggregate deltas; full transcripts should remain outside public docs.

@@ -1,7 +1,10 @@
 export { DEFAULT_CONFIG, configPath, databasePath, initConfig, loadConfig } from "./config/load-config.js";
 export { runDoctor, formatDoctorReport } from "./analysis/doctor.js";
+export { formatBenchmarkReport, generateBenchmarkReport, loadBenchmarkReport, parseAgentRunRecords } from "./benchmark/benchmark.js";
+export { createGraphBundle, verifyGraphBundle, sourceSnapshot, hashCanonical, canonicalJson } from "./bundle/bundle.js";
 export { openDatabase } from "./db/connection.js";
 export { GraphRepository } from "./db/repositories.js";
+export { generateGraphDiff, formatGraphDiff } from "./diff/graph-diff.js";
 export { ALPHA_EVALUATION_CASES, CJK_EVALUATION_CASES, ECC_EVALUATION_CASES, EVALUATION_QUERY_SET_NAMES, evaluateRetrieval, evaluationCasesForQuerySet } from "./evaluation/retrieval-eval.js";
 export { buildGraphRecords } from "./extraction/graph-builder.js";
 export { extractEntities } from "./extraction/entity-extractor.js";
@@ -12,6 +15,7 @@ export { parseMarkdownDocument } from "./parser/markdown-parser.js";
 export { buildContext } from "./query/context-builder.js";
 export { explainSearchGraph, searchGraph } from "./query/search.js";
 export { traceNodes } from "./query/trace.js";
+export { generateReport, formatReport } from "./reporting/report.js";
 export { scanMarkdownFiles } from "./scanner/file-scanner.js";
 export { embedTextLocal } from "./semantic/local-embedding.js";
 export { semanticStatusReport } from "./semantic/status.js";

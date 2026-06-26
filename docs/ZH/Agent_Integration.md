@@ -98,4 +98,4 @@ Task-start documentation brief：
 - MCP surface 故意保持五个工具：search、context、node、trace、status。
 - Agent auto mode 是确定性且很窄的策略：MCP search/context 会根据 query 形态、索引规模、`knownFiles` 和 `maxChars` 选择默认 limit、depth 和字符预算；宿主侧 token budget 仍应由 agent 或 client 处理。
 - `mdgraph_status` 会做轻量 Markdown 路径和 mtime freshness 检查；完整 stale-index hash 检查和文档健康结论仍应使用 `mdgraph doctor --json`。
-- 有限范围的 file-read 对比案例记录在 [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md)，但完整真实 agent A/B benchmark 尚未运行。
+- 有限范围的 file-read 对比案例记录在 [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md)。结构化 with/without-MDGraph run-record delta 使用 `mdgraph report --benchmark <file>`；完整 transcript 捕获和 agent runtime hosting 不属于 MDGraph。

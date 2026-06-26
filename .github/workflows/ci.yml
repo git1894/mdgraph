@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -46,3 +48,31 @@ jobs:
 
       - name: Pack smoke
         run: npm run smoke:pack
+
+      - name: MDGraph workflow report and bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .mdgraph/reports | Out-Null
+          node dist/bin/mdgraph.js index --json | Out-File -Encoding utf8 .mdgraph/reports/index.json
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $doctorArgs = @("doctor", "--since", "origin/${{ github.base_ref }}", "--fail-on", "warn", "--json")
+          } elseif ("${{ github.event.before }}" -match "^0+$") {
+            $doctorArgs = @("doctor", "--fail-on", "warn", "--json")
+          } else {
+            $doctorArgs = @("doctor", "--since", "${{ github.event.before }}", "--fail-on", "warn", "--json")
+          }
+          node dist/bin/mdgraph.js @doctorArgs | Out-File -Encoding utf8 .mdgraph/reports/doctor-gate.json
+          node dist/bin/mdgraph.js eval --json | Out-File -Encoding utf8 .mdgraph/reports/eval.json
+          $bundle = node dist/bin/mdgraph.js bundle create --profile private --json | ConvertFrom-Json
+          $bundle.bundleDir | Out-File -Encoding utf8 .mdgraph/reports/bundle-dir.txt
+          node dist/bin/mdgraph.js bundle verify $bundle.bundleDir --json | Out-File -Encoding utf8 .mdgraph/reports/bundle-verify.json
+          node dist/bin/mdgraph.js report --json --eval --bundle $bundle.bundleDir | Out-File -Encoding utf8 .mdgraph/reports/report.json
+
+      - name: Upload MDGraph workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdgraph-${{ matrix.os }}
+          path: |
+            .mdgraph/reports/**
+            .mdgraph/bundles/private/**
+          if-no-files-found: error

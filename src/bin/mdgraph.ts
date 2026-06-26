@@ -4,15 +4,18 @@ import path from "node:path";
 import { Command } from "commander";
 import { formatDoctorReport, runDoctor, type DoctorWarning, type DoctorWarningSeverity } from "../analysis/doctor.js";
 import { collectDoctorScope } from "../analysis/doctor-scope.js";
+import { createGraphBundle, verifyGraphBundle } from "../bundle/bundle.js";
 import { databasePath, initConfig, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeResolution } from "../db/repositories.js";
+import { formatGraphDiff, generateGraphDiff } from "../diff/graph-diff.js";
 import { EVALUATION_QUERY_SET_NAMES, evaluateRetrieval } from "../evaluation/retrieval-eval.js";
 import { indexProject } from "../indexer.js";
 import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
 import { explainSearchGraph, searchGraph } from "../query/search.js";
 import { traceNodes } from "../query/trace.js";
+import { formatReport, generateReport } from "../reporting/report.js";
 import { semanticStatusReport, type SemanticStatusReport } from "../semantic/status.js";
 import type { SearchQueryMode } from "../types.js";
 import { packageVersion } from "../version.js";
@@ -197,6 +200,63 @@ semanticCommand
     } finally {
       closeRepository(repository);
     }
+  });
+
+const bundleCommand = program
+  .command("bundle")
+  .description("Create and verify reusable local graph bundle artifacts");
+
+bundleCommand
+  .command("create")
+  .description("Create a private directory bundle from the current graph")
+  .option("--json", "Print JSON output")
+  .option("--profile <profile>", "Bundle profile", "private")
+  .action(async (options: { json?: boolean; profile: string }) => {
+    const result = await createGraphBundle(process.cwd(), { profile: options.profile });
+    printResult(options.json, result, formatBundleCreate(result));
+  });
+
+bundleCommand
+  .command("verify")
+  .description("Verify a graph bundle directory")
+  .argument("<dir>")
+  .option("--json", "Print JSON output")
+  .action((dir: string, options: { json?: boolean }) => {
+    const result = verifyGraphBundle(dir, { projectRoot: process.cwd() });
+    printResult(options.json, result, formatBundleVerify(result));
+    if (!result.valid) {
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("diff")
+  .description("Compare the current graph index against a base Git revision")
+  .requiredOption("--base <ref>", "Base Git revision")
+  .option("--json", "Print JSON output")
+  .action(async (options: { base: string; json?: boolean }) => {
+    const report = await generateGraphDiff(process.cwd(), { base: options.base });
+    printResult(options.json, report, formatGraphDiff(report));
+  });
+
+program
+  .command("report")
+  .description("Generate a CI-friendly graph health and workflow report")
+  .option("--json", "Print JSON output")
+  .option("--eval", "Include retrieval evaluation summary")
+  .option("--bundle <dir>", "Include bundle verification summary")
+  .option("--base <ref>", "Include graph diff summary against a base Git revision")
+  .option("--benchmark <file>", "Include paired agent benchmark summary from structured run records")
+  .option("--previous-report <file>", "Explicit previous report JSON for trend context")
+  .action(async (options: { json?: boolean; eval?: boolean; bundle?: string; base?: string; benchmark?: string; previousReport?: string }) => {
+    const report = await generateReport(process.cwd(), {
+      eval: options.eval,
+      bundle: options.bundle,
+      base: options.base,
+      benchmark: options.benchmark,
+      previousReport: options.previousReport
+    });
+    printResult(options.json, report, formatReport(report));
   });
 
 program
@@ -424,6 +484,37 @@ function formatSemanticStatus(projectRoot: string, report: SemanticStatusReport)
     `Indexed providers: ${report.indexedProviders.map((provider) => `${provider.provider}/${provider.model}/${provider.dimensions}=${provider.vectors}`).join(", ") || "none"}`,
     `Guidance: ${report.guidance.join(" ") || "none"}`
   ].join("\n");
+}
+
+function formatBundleCreate(result: Awaited<ReturnType<typeof createGraphBundle>>): string {
+  return [
+    "Created MDGraph bundle",
+    `Directory: ${result.bundleDir}`,
+    `Manifest: ${result.manifestPath}`,
+    `Schema: v${result.manifest.schemaVersion}`,
+    `Documents: ${result.manifest.counts.documents}`,
+    `Source hash: ${result.manifest.sourceHash}`
+  ].join("\n");
+}
+
+function formatBundleVerify(result: ReturnType<typeof verifyGraphBundle>): string {
+  const lines = [
+    "MDGraph bundle verification",
+    `Directory: ${result.bundleDir}`,
+    `Valid: ${result.valid}`,
+    `Freshness: ${result.freshness.state} (${result.freshness.reason})`
+  ];
+  if (result.manifest) {
+    lines.push(
+      `Schema: v${result.manifest.schemaVersion ?? "unknown"}`,
+      `Documents: ${result.manifest.counts?.documents ?? "unknown"}`,
+      `Source hash: ${result.manifest.sourceHash ?? "unknown"}`
+    );
+  }
+  if (result.errors.length) {
+    lines.push("Errors:", ...result.errors.map((error) => `- ${error}`));
+  }
+  return lines.join("\n");
 }
 
 function formatMetric(value: number): string {

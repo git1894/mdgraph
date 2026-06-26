@@ -103,6 +103,7 @@ When an AI agent needs to understand your project's architecture, it typically g
 | **Watch Mode** | Chokidar-based file watcher with configurable debounce — indexes on startup, then re-indexes on every save. |
 | **Optional Semantic Vectors** | Local deterministic hash embeddings (no external model). Enable with `--semantic`. |
 | **Documentation Health (Doctor)** | Lints your doc graph: dead links, stale source refs, missing definitions, weak links, possible contradictions, content risks, graph health, storage health, and lifecycle misuse. |
+| **Team Workflow Artifacts** | Create private graph bundles, verify bundle freshness, and generate CI-friendly reports without changing the MCP tool surface. |
 | **MCP Server** | Five focused tools for AI agents — search, context, node, trace, status. |
 | **100% Local** | SQLite database in `.mdgraph/`. No data leaves your machine. |
 
@@ -201,6 +202,15 @@ node dist/bin/mdgraph.js eval --query-set ecc --path /path/to/ecc --json # ECC p
 node dist/bin/mdgraph.js eval --query-set cjk --path /path/to/project --json # CJK retrieval baseline
 node dist/bin/mdgraph.js eval --query-mode semantic --json # Evaluate optional semantic reranking diagnostics
 
+# Team workflow artifacts
+node dist/bin/mdgraph.js bundle create --profile private --json # Create a private directory bundle
+node dist/bin/mdgraph.js bundle verify .mdgraph/bundles/private/BUNDLE_DIR --json # Verify bundle integrity and freshness
+node dist/bin/mdgraph.js report --json                          # Counts, storage, schema, doctor summary, and hashes
+node dist/bin/mdgraph.js report --json --eval --bundle .mdgraph/bundles/private/BUNDLE_DIR # Include eval and bundle verification
+node dist/bin/mdgraph.js diff --base main --json                # PR documentation graph impact
+node dist/bin/mdgraph.js report --json --base main              # Include diff summary in the report
+node dist/bin/mdgraph.js report --json --benchmark benchmark-runs.json # Include paired agent run-record deltas
+
 # MCP Server
 node dist/bin/mdgraph.js serve --mcp                       # Start stdio MCP server
 node dist/bin/mdgraph.js serve --mcp --path /your/project  # With explicit project root
@@ -224,6 +234,64 @@ node dist/bin/mdgraph.js help search                       # Command-specific he
 ```
 
 All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality, RRF search fusion, MMR-style document-diverse context packing, query mode, and optional semantic reranking diagnostics; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content; `--query-set cjk` records a small Chinese/Japanese retrieval baseline covered by lightweight CJK n-gram preprocessing. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
+
+`bundle create` currently supports only `--profile private`. It writes a directory artifact with `manifest.json`, `graph.db`, `config.json`, and a storage/status report. The manifest records schema version, graph counts, config/source hashes, and provenance, but not Markdown body content or the absolute project root. `report` is intended for CI artifacts and local workflow checks; trend state is based only on an explicit `--previous-report` file.
+
+`diff --base <ref>` builds an isolated temporary index for the base Git revision and compares it to the current graph index. It reports added, modified, deleted, and renamed Markdown documents, graph count deltas, doctor warning deltas, changed source refs, and short PR summary lines. It does not inspect source-code ASTs or replace the current `.mdgraph/graph.db`.
+
+`report --benchmark <file>` reads structured with/without-MDGraph agent run records and embeds paired deltas for file reads, text searches, tool calls, MDGraph calls, character/token budgets, latency, raw file fallback, and citation correctness. It does not parse full transcripts or run agents. Incomplete pairs are reported as skipped; `unknown` citations are excluded from correctness percentages.
+
+### Team Workflow Examples
+
+For a CI changed-document gate, run a fresh index and scope doctor to the PR or push base ref:
+
+```bash
+node dist/bin/mdgraph.js index --json
+node dist/bin/mdgraph.js doctor --since origin/main --fail-on warn --json
+```
+
+The repository CI workflow includes a copyable GitHub Actions example: after install, build, tests, and CLI smoke, it runs `index`, `doctor --since <base> --fail-on warn`, `eval`, `bundle create`, `bundle verify`, and `report --eval --bundle`, then uploads `.mdgraph/reports/**` and `.mdgraph/bundles/private/**` as artifacts.
+
+For a reusable private CI artifact, create a bundle, persist its directory as a build artifact, and pass that directory to `bundle verify` or `report --bundle` in later jobs.
+
+Example `.git/hooks/pre-commit` changed-doc gate:
+
+```sh
+#!/bin/sh
+set -eu
+
+if [ "${MDGRAPH_SKIP_HOOK:-}" = "1" ]; then
+  echo "MDGraph hook skipped via MDGRAPH_SKIP_HOOK=1"
+  exit 0
+fi
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -E '\.mdx?$' >/dev/null; then
+  node dist/bin/mdgraph.js index --json
+  node dist/bin/mdgraph.js doctor --changed --fail-on warn --json
+fi
+```
+
+Example `.git/hooks/pre-push` error-only gate:
+
+```sh
+#!/bin/sh
+set -eu
+
+if [ "${MDGRAPH_SKIP_HOOK:-}" = "1" ]; then
+  echo "MDGraph hook skipped via MDGRAPH_SKIP_HOOK=1"
+  exit 0
+fi
+
+node dist/bin/mdgraph.js index --json
+base="$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null || printf 'origin/main')"
+node dist/bin/mdgraph.js doctor --since "$base" --fail-on error --json
+```
+
+Both hooks rebuild the local index before checking so they do not rely on stale `.mdgraph/graph.db` state. The pre-commit hook checks staged/worktree Markdown via `--changed`; the pre-push hook checks committed branch changes via `--since`. Set `MDGRAPH_SKIP_HOOK=1` for emergency local bypasses and run the CI workflow before merging.
+
+For a PR documentation impact summary, run `node dist/bin/mdgraph.js index --json` on the checked-out head, then `node dist/bin/mdgraph.js diff --base origin/main --json` or `report --json --base origin/main`.
+
+For an A/B benchmark report, capture one `with_mdgraph` and one `without_mdgraph` structured run record for the same `questionId`, then run `node dist/bin/mdgraph.js report --json --benchmark benchmark-runs.json`. Keep full transcripts outside public artifacts.
 
 ---
 
@@ -436,6 +504,8 @@ The SQLite database lives at `.mdgraph/graph.db` and stores the following record
 
 | Table | Records |
 |-------|---------|
+| `schema_metadata` | Schema version, MDGraph version provenance, update time, and `current`/`legacy` baseline metadata |
+| `schema_migrations` | Reserved audit table for future schema migrations |
 | `documents` | One row per Markdown file — path, content hash, type (spec/design/adr/api/runbook/incident/meeting/guide/memory/other), trust tier (authored/generated/validated/external/untrusted), metadata |
 | `sections` | Heading-bounded regions — anchor, level, line range, content |
 | `entities` | Named symbols — kind (symbol/api_route/error_code/config_key/file_path/command/package/concept/decision), normalized name, optional namespace |
@@ -477,6 +547,9 @@ The SQLite database lives at `.mdgraph/graph.db` and stores the following record
 | Storage | `src/db/*` | SQLite schema, connection, GraphRepository, record replacement, incremental updates |
 | Query | `src/query/*` | FTS5 + entity search ranking, context packing with graph expansion, BFS graph tracing |
 | Semantic | `src/semantic/local-embedding.ts` | Deterministic local hash vector generation and cosine similarity |
+| Benchmark | `src/benchmark/*` | Structured agent A/B run-record parsing and paired delta aggregation |
+| Bundle | `src/bundle/*` | Private directory graph bundle creation and verification |
+| Reporting | `src/reporting/*` | CI-friendly graph workflow report aggregation |
 | MCP | `src/mcp/*` | JSON-RPC stdio MCP server, tool handlers, server instructions |
 | Watch | `src/watcher/file-watcher.ts` | Chokidar-based file watcher with debounced incremental re-indexing |
 | Analysis | `src/analysis/doctor.ts` | Rule-based doc health: dead links, stale refs, orphan detection, content risks |

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../config/load-config.js";
-import { openExistingDatabase } from "../db/connection.js";
+import { openDatabase } from "../db/connection.js";
 import { GraphRepository, type DefinitionCollision, type DocumentLinkStats, type StorageDiagnostics } from "../db/repositories.js";
 import { parseMarkdownDocument } from "../parser/markdown-parser.js";
 import { LinkResolver } from "../resolution/link-resolver.js";
@@ -167,6 +167,7 @@ export interface DoctorHealth {
 
 export interface DoctorOptions {
   scope?: DoctorScope;
+  applySchema?: boolean;
 }
 
 export interface DoctorReport {
@@ -221,7 +222,7 @@ export async function runDoctor(projectRoot: string, options: DoctorOptions = {}
   const files = await scanMarkdownFiles(projectRoot, config);
   const parsedDocuments = files.map((file) => parseMarkdownDocument(projectRoot, file));
   const resolver = new LinkResolver(parsedDocuments);
-  const repository = new GraphRepository(openExistingDatabase(projectRoot));
+  const repository = new GraphRepository(openDatabase(projectRoot, { createIfMissing: false, applySchema: options.applySchema ?? true }));
 
   try {
     const scopePaths = buildScopePathSet(scope, parsedDocuments, repository);

@@ -98,4 +98,4 @@ Documentation health check:
 - The MCP surface intentionally stays at five tools: search, context, node, trace, and status.
 - Agent auto mode is deterministic and narrow: MCP search/context choose default limit, depth, and character budget from query shape, index size, `knownFiles`, and `maxChars`. Token-specific host budgets should still be handled by the agent or client.
 - `mdgraph_status` performs a lightweight Markdown path and mtime freshness check. Use `mdgraph doctor --json` for full stale-index hashing and documentation health conclusions.
-- Scoped file-read comparison case notes are recorded in [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md), but a full real-agent A/B benchmark has not been run yet.
+- Scoped file-read comparison case notes are recorded in [Agent_File_Read_Comparison.md](Agent_File_Read_Comparison.md). Use `mdgraph report --benchmark <file>` for structured with/without-MDGraph run-record deltas; full transcript capture and agent runtime hosting remain outside MDGraph.

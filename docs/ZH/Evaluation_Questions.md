@@ -54,7 +54,7 @@ mdgraph eval --query-mode semantic --json
 - `mdgraph eval` 指标：top-K 文档召回、预期章节召回、上下文精度、trace 成功率、延迟、返回字符数、预算适配、fanout、上下文多样性、reason 覆盖率和 ranking reason 覆盖率。
 - `mdgraph eval` 排序报告：query mode、RRF 搜索融合通道、MMR-style 上下文打包策略、可选 reranker 状态和 semantic-active case 数量。
 
-当前仓库已有单元测试、集成测试、MCP 测试、CLI 测试、语义测试、增量测试和 doctor 测试，但尚未针对这些问题运行真实的代理 A/B 基准测试。
+v0.6 的 A/B 报告入口是 `mdgraph report --benchmark benchmark-runs.json --json`。它消费结构化 run records 并报告 aggregate deltas；完整 transcript 应保留在公开文档之外。
 
 ## CJK 期望记录
 

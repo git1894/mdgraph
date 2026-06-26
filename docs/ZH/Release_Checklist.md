@@ -1,11 +1,11 @@
 # MDGraph 发布清单
 
-在发布 MDGraph 或请求维护者切 release 前使用此清单。它补充 `CHANGELOG-ZH.md`、[Output_Contracts.md](Output_Contracts.md)、[Alpha_Results.md](Alpha_Results.md) 和 [docs/tasks/README.md](../tasks/README.md) 中的 task public check。
+在发布 MDGraph 或请求维护者切 release 前使用此清单。它补充 [CHANGELOG.md](../../CHANGELOG.md)、[Output_Contracts.md](Output_Contracts.md)、[Alpha_Results.md](Alpha_Results.md) 和 [docs/tasks/README.md](../tasks/README.md) 中的 task public check。
 
 ## 公开检查
 
 - 确认 `package.json` 版本和 CLI `program.version(...)` 一致。
-- 确认 `CHANGELOG-ZH.md` 已包含本次发布条目。
+- 确认 [CHANGELOG.md](../../CHANGELOG.md) 已包含本次发布条目。
 - 当公开 CLI/MCP 行为变化时，复查 README quick start、运行要求、MCP setup、输出契约和已知 tradeoff。
 - 当 parser、scanner、storage、query、MCP 或 doctor 行为对外部语料产生实质变化时，刷新 [Alpha_Results.md](Alpha_Results.md)。
 
@@ -22,6 +22,12 @@ npm run smoke:pack
 node dist/bin/mdgraph.js index --json
 node dist/bin/mdgraph.js doctor --strict --json
 node dist/bin/mdgraph.js status --storage --json
+node dist/bin/mdgraph.js bundle create --profile private --json
+node dist/bin/mdgraph.js bundle verify BUNDLE_DIR_FROM_CREATE_OUTPUT --json
+node dist/bin/mdgraph.js report --json --eval --bundle BUNDLE_DIR_FROM_CREATE_OUTPUT
+node dist/bin/mdgraph.js diff --base HEAD --json
+node dist/bin/mdgraph.js report --json --base HEAD
+node dist/bin/mdgraph.js report --json --benchmark PATH_TO_BENCHMARK_RUN_RECORDS
 npm run task:public-check
 git diff --check
 ```
@@ -31,6 +37,9 @@ git diff --check
 - Typecheck、tests、build、CLI smoke 和 pack smoke 均以 0 退出。
 - `doctor --strict --json` 对 MDGraph 仓库报告 `staleIndex: 0`，且没有问题计数。
 - `status --storage --json` 返回 `{ counts, storage }`，并包含 database、object、path group、edge kind、high-degree node 和 vector 信息。
+- `bundle create`、`bundle verify` 和 `report --json --eval --bundle` 为当前仓库索引返回有效的私有工作流 artifact。
+- `diff --base` 和 `report --base` 返回 documentation graph impact summary，且不会替换当前 index。
+- `report --benchmark` 返回 paired run-record delta，将不完整 pair 报告为 skipped，并且不需要 transcript 或 agent/model 执行。
 - `task:public-check` 不应发现 `docs/tasks/` 下除允许公开文件外的已跟踪任务工件。
 - `git diff --check` 干净。Windows CRLF 文件如出现未改动行尾误报，可设置仓库本地 `core.whitespace=cr-at-eol`。
 

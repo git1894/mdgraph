@@ -10,9 +10,11 @@ const tempRoots = [];
 try {
   assertFile(cliPath, "Run `npm run build` before `npm run smoke:cli`.");
   runCleanProjectSmoke();
+  runBenchmarkSmoke();
   runStrictFailureSmoke();
   runDoctorGateSmoke();
   runDoctorScopeSmoke();
+  runExternalEccSmoke();
 } finally {
   for (const root of tempRoots) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -76,6 +78,97 @@ function runCleanProjectSmoke() {
   const doctor = runCliJson(root, ["doctor", "--json"]);
   assertEqual(totalDoctorIssues(doctor.summary), 0, "clean smoke docs should have no doctor issues");
   runCli(root, ["doctor", "--strict"]);
+
+  const bundle = runCliJson(root, ["bundle", "create", "--profile", "private", "--json"]);
+  assertEqual(bundle.manifest.visibility, "private", "bundle create should use private visibility");
+  assertFile(path.join(bundle.bundleDir, "manifest.json"), "bundle create should write manifest.json.");
+  assertFile(path.join(bundle.bundleDir, "graph.db"), "bundle create should write graph.db.");
+  assertFile(path.join(bundle.bundleDir, "config.json"), "bundle create should write config.json.");
+
+  const bundleVerify = runCliJson(root, ["bundle", "verify", bundle.bundleDir, "--json"]);
+  assertEqual(bundleVerify.valid, true, "bundle verify should accept the freshly created bundle");
+  assertEqual(bundleVerify.freshness.state, "fresh", "bundle verify should compare source hash against the current workspace");
+
+  const report = runCliJson(root, ["report", "--json", "--eval", "--bundle", bundle.bundleDir]);
+  assertEqual(report.indexed, true, "report should detect the indexed smoke project");
+  assertEqual(report.schema.schemaVersion, 1, "report should include schema metadata");
+  assertEqual(report.schema.baseline, "current", "report should mark a freshly created database as current");
+  assertEqual(report.bundle.valid, true, "report should include bundle verification");
+  assert(report.eval.summary.cases > 0, "report --eval should include evaluation summary");
+}
+
+function runBenchmarkSmoke() {
+  const root = makeTempRoot("mdgraph-cli-benchmark-");
+  const question = "Why does RedisTimeoutError affect LoginFlow?";
+  const expectedPaths = [
+    "docs/redis-cache-design.md",
+    "docs/login-flow.md",
+    "docs/runbooks/auth-retry-runbook.md"
+  ];
+  writeBenchmarkDocs(root);
+  runCli(root, ["init", "--docs", "docs/**/*.md"]);
+  runCli(root, ["index", "--json"]);
+
+  const withStartedAt = new Date().toISOString();
+  const withStart = Date.now();
+  const contextResult = runCli(root, ["context", question, "--json"]);
+  const withLatencyMs = Date.now() - withStart;
+  const context = JSON.parse(contextResult.stdout);
+  const contextPaths = unique(context.items.map((item) => item.path)).filter((item) => expectedPaths.includes(item));
+
+  const withoutStartedAt = new Date().toISOString();
+  const withoutStart = Date.now();
+  const textSearch = searchMarkdown(root, "RedisTimeoutError LoginFlow");
+  const directFileReads = expectedPaths.map((relativePath) => ({
+    path: relativePath,
+    chars: fs.readFileSync(path.join(root, relativePath), "utf8").length
+  }));
+  const withoutLatencyMs = Date.now() - withoutStart;
+
+  const benchmarkPath = path.join(root, "benchmark-runs.json");
+  const runs = [
+    {
+      id: "smoke-with-mdgraph",
+      questionId: "alpha-1",
+      question,
+      mode: "with_mdgraph",
+      startedAt: withStartedAt,
+      completedAt: new Date().toISOString(),
+      toolCalls: [{ name: "mdgraph_context", outputChars: contextResult.stdout.length }],
+      directFileReads: [],
+      textSearches: [],
+      mdgraphCalls: [{ tool: "mdgraph_context", query: question, resultCount: context.items.length, chars: context.usedChars }],
+      finalCitations: contextPaths.map((documentPath) => ({ path: documentPath })),
+      rawFileFallback: false,
+      characterBudget: context.usedChars,
+      latencyMs: withLatencyMs
+    },
+    {
+      id: "smoke-without-mdgraph",
+      questionId: "alpha-1",
+      question,
+      mode: "without_mdgraph",
+      startedAt: withoutStartedAt,
+      completedAt: new Date().toISOString(),
+      toolCalls: [
+        { name: "text_search", outputChars: textSearch.outputChars },
+        ...directFileReads.map((read) => ({ name: "read_file", outputChars: read.chars }))
+      ],
+      directFileReads,
+      textSearches: [{ query: "RedisTimeoutError LoginFlow", resultCount: textSearch.resultCount }],
+      mdgraphCalls: [],
+      finalCitations: expectedPaths.map((documentPath) => ({ path: documentPath })),
+      rawFileFallback: true,
+      characterBudget: textSearch.outputChars + directFileReads.reduce((total, read) => total + read.chars, 0),
+      latencyMs: withoutLatencyMs
+    }
+  ];
+  fs.writeFileSync(benchmarkPath, `${JSON.stringify({ runs }, null, 2)}\n`, "utf8");
+
+  const benchmarkReport = runCliJson(root, ["report", "--json", "--benchmark", benchmarkPath]);
+  assertEqual(benchmarkReport.benchmark.summary.completePairs, 1, "report --benchmark should include one complete paired benchmark");
+  assertEqual(benchmarkReport.benchmark.summary.aggregateDelta.directFileReads, -3, "benchmark aggregate should report file-read delta");
+  assertEqual(benchmarkReport.benchmark.summary.aggregateDelta.mdgraphCalls, 1, "benchmark aggregate should report MDGraph call delta");
 }
 
 function runStrictFailureSmoke() {
@@ -140,6 +233,16 @@ function runDoctorScopeSmoke() {
   assert(changed.warnings.every((warning) => warning.code === "index.stale"), "stale scoped report should only include freshness warnings");
 
   runCli(root, ["index", "--json"]);
+  const diff = runCliJson(root, ["diff", "--base", "HEAD", "--json"]);
+  assertEqual(diff.mode, "base_ref", "diff --base should report base_ref mode");
+  assert(diff.summary.documentsModified >= 1, "diff --base should include modified Markdown");
+  assert(diff.summary.documentsDeleted >= 1, "diff --base should include deleted Markdown");
+  assert(diff.summary.documentsRenamed >= 1, "diff --base should include renamed Markdown");
+  assert(diff.impact.prSummary.length > 0, "diff --base should include PR summary lines");
+
+  const reportWithDiff = runCliJson(root, ["report", "--json", "--base", "HEAD"]);
+  assert(reportWithDiff.diff?.summary.documentsModified >= 1, "report --base should include diff summary");
+
   runGit(root, ["add", "."]);
   runGit(root, ["commit", "-m", "changed docs"]);
   const since = runCliJson(root, ["doctor", "--since", "HEAD~1", "--json"]);
@@ -157,6 +260,26 @@ function runDoctorScopeSmoke() {
   fs.mkdirSync(path.join(noGitRoot, "docs"), { recursive: true });
   fs.writeFileSync(path.join(noGitRoot, "docs", "note.md"), "# Note\n", "utf8");
   runCli(noGitRoot, ["doctor", "--changed"], { expectedExitCode: 1 });
+}
+
+function runExternalEccSmoke() {
+  const configuredPath = process.env.MDGRAPH_EXTERNAL_ECC_PATH;
+  if (!configuredPath) {
+    console.log("External ECC smoke skipped: MDGRAPH_EXTERNAL_ECC_PATH is not set.");
+    return;
+  }
+  const root = path.resolve(configuredPath);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    console.log(`External ECC smoke skipped: MDGRAPH_EXTERNAL_ECC_PATH is not a directory (${root}).`);
+    return;
+  }
+  runCli(root, ["index", "--json"]);
+  runCli(root, ["doctor", "--json"]);
+  const bundle = runCliJson(root, ["bundle", "create", "--profile", "private", "--json"]);
+  const verified = runCliJson(root, ["bundle", "verify", bundle.bundleDir, "--json"]);
+  assertEqual(verified.valid, true, "external ECC bundle should verify when MDGRAPH_EXTERNAL_ECC_PATH is enabled");
+  const report = runCliJson(root, ["report", "--json", "--bundle", bundle.bundleDir]);
+  assertEqual(report.bundle.valid, true, "external ECC report should include valid bundle verification");
 }
 
 function writeCleanDocs(root) {
@@ -216,6 +339,93 @@ function writeCleanDocs(root) {
     "See [[auth-v2-design#session-refresh]].",
     ""
   ].join("\n"), "utf8");
+}
+
+function writeBenchmarkDocs(root) {
+  const docsDir = path.join(root, "docs");
+  const runbooksDir = path.join(docsDir, "runbooks");
+  fs.mkdirSync(runbooksDir, { recursive: true });
+
+  fs.writeFileSync(path.join(docsDir, "redis-cache-design.md"), [
+    "---",
+    "id: redis-cache-design",
+    "title: Redis Cache Design",
+    "type: design",
+    "defines:",
+    "  - RedisTimeoutError",
+    "---",
+    "# Redis Cache Design",
+    "",
+    "## Timeout Handling",
+    "",
+    "`RedisTimeoutError` follows cache failure policy and returns retry guidance.",
+    ""
+  ].join("\n"), "utf8");
+
+  fs.writeFileSync(path.join(docsDir, "login-flow.md"), [
+    "---",
+    "id: login-flow",
+    "title: Login Flow",
+    "type: spec",
+    "defines:",
+    "  - LoginFlow",
+    "depends_on:",
+    "  - redis-cache-design",
+    "---",
+    "# Login Flow",
+    "",
+    "`LoginFlow` handles `RedisTimeoutError` as a retryable result.",
+    "See [Redis Cache Design](./redis-cache-design.md).",
+    ""
+  ].join("\n"), "utf8");
+
+  fs.writeFileSync(path.join(runbooksDir, "auth-retry-runbook.md"), [
+    "---",
+    "id: auth-retry-runbook",
+    "title: Auth Retry Runbook",
+    "type: runbook",
+    "defines:",
+    "  - AuthRetryRunbook",
+    "depends_on:",
+    "  - login-flow",
+    "---",
+    "# Auth Retry Runbook",
+    "",
+    "Use this runbook when `RedisTimeoutError` affects `LoginFlow`.",
+    ""
+  ].join("\n"), "utf8");
+}
+
+function searchMarkdown(root, query) {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  let outputChars = 0;
+  let resultCount = 0;
+  for (const filePath of markdownFiles(path.join(root, "docs"))) {
+    const content = fs.readFileSync(filePath, "utf8");
+    const lower = content.toLowerCase();
+    if (terms.some((term) => lower.includes(term))) {
+      resultCount += 1;
+      outputChars += content.length;
+    }
+  }
+  return { resultCount, outputChars };
+}
+
+function markdownFiles(dir) {
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...markdownFiles(entryPath));
+    } else if (/\.mdx?$/i.test(entry.name)) {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
+function unique(values) {
+  return [...new Set(values)];
 }
 
 function makeTempRoot(prefix) {

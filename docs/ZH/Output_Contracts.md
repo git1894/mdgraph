@@ -1,6 +1,6 @@
 # MDGraph 输出契约
 
-本文记录 0.1 CLI 表面的稳定顶层 JSON 形状。除非另有说明，嵌套记录字段遵循 `src/types.ts` 中的公开 TypeScript 模型。
+本文记录当前 CLI 表面的稳定顶层 JSON 形状。除非另有说明，嵌套记录字段遵循 `src/types.ts` 中的公开 TypeScript 模型。
 
 ## `index --json`
 
@@ -101,6 +101,73 @@
 每个 case 的 `expected` 包含预期文档、章节、实体、边类型和 source refs。`observed` 包含排序后的搜索文档路径、上下文条目路径/标题/reason、匹配实体、已解析实体、已解析 source refs、观测到的边类型、可选 trace 结果和排序诊断。`metrics` 包含 top-K 文档召回、预期章节召回、上下文精度、实体召回、source-ref 召回、边类型覆盖、trace 成功率、延迟、返回字符数、预算适配、fanout、reason 覆盖率、ranking reason 覆盖率和上下文多样性。
 
 `--query-set ecc` 使用 ECC 风格 path-only 期望记录；`--query-set cjk` 使用中文/日文期望记录，用于度量轻量 CJK n-gram 预处理基线下的检索质量。`--query-mode semantic` 请求可选语义搜索，并报告本地语义 reranker 是否实际生效。`mdgraph eval` 不会自动索引目标项目，运行前需先执行 `mdgraph index`。
+
+## `bundle create --json`
+
+`mdgraph bundle create --profile private --json` 会在 `.mdgraph/bundles/private/` 下创建私有目录 artifact，并返回：
+
+- `bundleDir`：创建出的 bundle 目录绝对路径。
+- `manifestPath`：`manifest.json` 的绝对路径。
+- `manifest`：bundle manifest，包含 `format`、`formatVersion`、`schemaVersion`、`mdgraphVersion`、`createdAt`、`visibility`、`sourceHash`、`configHash`、`provenance`、`counts`、`documents` 和可选 `reports`。
+
+私有 bundle 包含 `manifest.json`、`graph.db`、`config.json` 和 `reports/status-storage.json` 快照。`sourceHash` 来自规范化配置与按路径排序的文档 path/hash 记录；不包含 Markdown 正文或绝对项目根目录。0.6 不支持 public 或脱敏 bundle profile。
+
+## `bundle verify --json`
+
+`mdgraph bundle verify <dir> --json` 返回：
+
+- `bundleDir`：被检查 bundle 目录的绝对路径。
+- `valid`：校验结果。
+- `errors`：校验失败原因。
+- `manifest`：可读取时的 manifest。
+- `counts`：可读取时，从 bundle 内 `graph.db` 计算出的图计数。
+- `schemaVersion`、`sourceHash` 和 `configHash`：可计算时的 bundle 内重算值。
+- `freshness`：`state`（`fresh`、`stale` 或 `unknown`）和 `reason`；可行时会把 bundle source hash 与当前工作区比较。
+
+当 `valid` 为 `false` 时，命令以非零状态退出。
+
+## `report --json`
+
+`mdgraph report --json` 返回适合 CI 使用的图工作流报告：
+
+- `projectRoot`、`generatedAt`、`mdgraphVersion` 和 `indexed`。
+- `schema`：已索引时的 schema metadata，包含 `schemaVersion`、`createdByVersion`、`updatedAt` 和 `baseline`。
+- `counts`、`storage` 和 `source`：已索引时的图计数、存储诊断，以及 source/config/document hashes。
+- `doctor`：已索引时的 doctor summary、warning counts 和 top warning codes。
+- `eval`：提供 `--eval` 时的 evaluation query set、summary 和 ranking metadata。
+- `bundle`：提供 `--bundle <dir>` 时的 bundle verification result。
+- `diff`：提供 `--base <ref>` 时的 graph diff result。
+- `benchmark`：提供 `--benchmark <file>` 时的 paired benchmark result。
+- `trend`：`first_run`、`previous_report_loaded` 或 `previous_report_missing`。Trend 只反映显式传入的 `--previous-report <file>`；MDGraph 不会写入隐藏的 report history。
+
+## `report --benchmark <file> --json`
+
+`mdgraph report --benchmark benchmark-runs.json --json` 会读取结构化 agent run records，并在 report 中嵌入 `benchmark` 对象。输入必须是 run record JSON 数组，或包含 `runs` 数组的对象。MDGraph 不解析完整 transcript、不调用模型，也不运行 agent。
+
+每个 `AgentRunRecord` 包含 `id`、`questionId`、`question`、`mode`（`with_mdgraph` 或 `without_mdgraph`）、时间戳、`toolCalls`、`directFileReads`、`textSearches`、`mdgraphCalls`、`finalCitations`、`rawFileFallback`、可选 `tokenEstimate`、可选 `characterBudget` 和 `latencyMs`。
+
+嵌入的 `benchmark` 对象返回：
+
+- `format: "mdgraph-benchmark"` 和 `formatVersion: 1`。
+- `records`：解析到的 run record 数量。
+- `summary`：question 数、完整 pair 数、skipped pair 数和 aggregate deltas。Delta 定义为 `with_mdgraph - without_mdgraph`。
+- `pairs`：每个完整 pair 的 `withMdgraph`、`withoutMdgraph` 和 `delta` 指标，覆盖 file reads、text searches、tool calls、MDGraph calls、字符/token 预算、延迟、raw-file fallback 和引用正确率。
+- `skipped`：不完整、重复或 question 文本不一致的 pair。完整 pair 必须恰好包含一个 `with_mdgraph` 和一个 `without_mdgraph` record。
+
+当 `questionId` 匹配内置 evaluation case 时，引用正确率会自动按 expected document/section path 判定。非 evaluation 问题使用 run record 中显式的 `correct: true`、`correct: false` 或 `correct: "unknown"`。`unknown` 单独计数，不进入正确率分母。
+
+## `diff --json`
+
+`mdgraph diff --base <ref> --json` 会把当前已索引图与从 Git base revision 隔离临时索引出的图进行比较，并返回：
+
+- `mode`：当前为 `base_ref`。
+- `base`：请求的 `ref`、解析后的 Git `revision` 和 base `sourceHash`。
+- `head`：当前图的 `sourceHash`。
+- `summary`：`documentsAdded`、`documentsModified`、`documentsDeleted`、`documentsRenamed`、`sectionsChanged`、`sourceRefsChanged`、`edgesChanged` 和 `warningDelta`。
+- `documents`：变更 Markdown 文档条目，包含 `path`、可选 `previousPath`、`change`、`hashChanged`、可选 `statusChanged`、`sectionDelta`、`sourceRefDelta` 和可选 `warningCodes`。
+- `impact`：`changedSourceRefs`、`affectedDocs` 和简短 `prSummary`。
+
+Diff 只比较 Markdown 图记录、source refs 和 doctor warning codes。它不会解析源码 AST，也不会推断运行时代码影响。Base index 会在临时目录中创建，不会替换当前 `.mdgraph/graph.db`。
 
 ## `semantic status --json`
 

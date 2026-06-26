@@ -6,6 +6,18 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.6.0 - 2026-06-26
+
+### Added
+
+- Added schema metadata for current/legacy database baselines plus future schema-version refusal before local schema application.
+- Added `mdgraph bundle create --profile private` and `mdgraph bundle verify` for local private directory graph artifacts with source/config/document hash validation.
+- Added `mdgraph report` for CI-friendly graph workflow reports that aggregate schema, counts, storage, doctor, optional eval, and optional bundle verification summaries.
+- Added `mdgraph diff --base <ref>` and `mdgraph report --base <ref>` for PR documentation graph impact summaries built from isolated base-revision indexes.
+- Added `mdgraph report --benchmark <file>` for paired with/without-MDGraph agent run-record deltas without transcript parsing or agent runtime execution.
+- Added a GitHub Actions workflow artifact example for index, base-ref scoped doctor, eval, bundle create/verify, report generation, and report/bundle artifact upload.
+- Added build-output CLI smoke coverage for private bundle create/verify, report generation, base-ref graph diff, and structured benchmark report input generated from actual context/file-read operations.
+
 ## 0.5.0 - 2026-06-26
 
 ### Added

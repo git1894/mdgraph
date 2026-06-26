@@ -22,6 +22,12 @@ npm run smoke:pack
 node dist/bin/mdgraph.js index --json
 node dist/bin/mdgraph.js doctor --strict --json
 node dist/bin/mdgraph.js status --storage --json
+node dist/bin/mdgraph.js bundle create --profile private --json
+node dist/bin/mdgraph.js bundle verify BUNDLE_DIR_FROM_CREATE_OUTPUT --json
+node dist/bin/mdgraph.js report --json --eval --bundle BUNDLE_DIR_FROM_CREATE_OUTPUT
+node dist/bin/mdgraph.js diff --base HEAD --json
+node dist/bin/mdgraph.js report --json --base HEAD
+node dist/bin/mdgraph.js report --json --benchmark PATH_TO_BENCHMARK_RUN_RECORDS
 npm run task:public-check
 git diff --check
 ```
@@ -31,6 +37,9 @@ Expected results:
 - Typecheck, tests, build, CLI smoke, and pack smoke exit 0.
 - `doctor --strict --json` reports `staleIndex: 0` and no issue counts for the MDGraph repository.
 - `status --storage --json` returns `{ counts, storage }` with database, object, path group, edge kind, high-degree node, and vector sections.
+- `bundle create`, `bundle verify`, and `report --json --eval --bundle` return valid private workflow artifacts for the current repository index.
+- `diff --base` and `report --base` return a documentation graph impact summary without replacing the current index.
+- `report --benchmark` returns paired run-record deltas, reports incomplete pairs as skipped, and does not require transcripts or agent/model execution.
 - `task:public-check` does not find tracked task artifacts under `docs/tasks/` except the allowed public files.
 - `git diff --check` is clean. On Windows CRLF files, set repository-local `core.whitespace=cr-at-eol` if needed to avoid false positives on unchanged CRLF endings.
 

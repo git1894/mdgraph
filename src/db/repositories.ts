@@ -1,4 +1,5 @@
 import type { SqliteDatabase } from "./sqlite-adapter.js";
+import { readSchemaMetadata, type SchemaMetadata } from "./connection.js";
 import type {
   ChunkVector,
   EdgeKind,
@@ -177,6 +178,10 @@ export class GraphRepository {
     return typeof row?.indexed_at === "string" && row.indexed_at ? row.indexed_at : undefined;
   }
 
+  schemaMetadata(): SchemaMetadata {
+    return readSchemaMetadata(this.db);
+  }
+
   storageDiagnostics(): StorageDiagnostics {
     const pageSize = pragmaNumber(this.db, "page_size");
     const pageCount = pragmaNumber(this.db, "page_count");
@@ -203,6 +208,10 @@ export class GraphRepository {
         providers
       }
     };
+  }
+
+  checkpointStorage(): void {
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
   }
 
   documentHashes(): Map<string, { id: string; hash: string }> {
@@ -576,9 +585,19 @@ export class GraphRepository {
     return rows.map((row) => rowToDocument(row));
   }
 
+  allSections(): GraphSection[] {
+    const rows = this.db.prepare("SELECT * FROM sections ORDER BY document_id, start_line, id").all() as Record<string, unknown>[];
+    return rows.map((row) => rowToSection(row));
+  }
+
   allSourceRefs(): SourceRef[] {
     const rows = this.db.prepare("SELECT * FROM source_refs ORDER BY path").all() as Record<string, unknown>[];
     return rows.map(rowToSourceRef);
+  }
+
+  allEdges(): GraphEdge[] {
+    const rows = this.db.prepare("SELECT * FROM edges ORDER BY from_id, to_id, kind, provenance").all() as Record<string, unknown>[];
+    return rows.map(rowToEdge);
   }
 
   documentLinkStats(): DocumentLinkStats[] {

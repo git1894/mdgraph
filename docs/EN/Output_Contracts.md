@@ -1,6 +1,6 @@
 # MDGraph Output Contracts
 
-This document records the stable top-level JSON shapes for the 0.2 CLI surface. Nested record fields follow the public TypeScript model in `src/types.ts` unless noted otherwise.
+This document records the stable top-level JSON shapes for the current CLI surface. Nested record fields follow the public TypeScript model in `src/types.ts` unless noted otherwise.
 
 ## `index --json`
 
@@ -101,6 +101,73 @@ When no node is found, it returns:
 Per-case `expected` includes expected documents, sections, entities, edge kinds, and source refs. Per-case `observed` includes ranked search document paths, context item paths/headings/reasons, matched entities, resolved entities, resolved source refs, observed edge kinds, optional trace results, and ranking diagnostics. Per-case `metrics` includes top-K document recall, expected-section recall, context precision, entity recall, source-ref recall, edge-kind coverage, trace success, latency, returned characters, budget fit, fanout, reason coverage, ranking reason coverage, and context diversity.
 
 `mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project. `mdgraph eval --query-set ecc --path <project> --json` uses ECC-style path-only expected records so an external workflow corpus can be scored without copying its document content into MDGraph fixtures. `mdgraph eval --query-set cjk --path <project> --json` uses Chinese/Japanese expected records to measure CJK retrieval quality with the lightweight CJK n-gram preprocessing baseline. `mdgraph eval --query-mode semantic --json` requests optional semantic search and reports whether the local semantic reranker was active.
+
+## `bundle create --json`
+
+`mdgraph bundle create --profile private --json` creates a private directory artifact under `.mdgraph/bundles/private/` and returns:
+
+- `bundleDir`: absolute path to the created bundle directory.
+- `manifestPath`: absolute path to `manifest.json`.
+- `manifest`: bundle manifest with `format`, `formatVersion`, `schemaVersion`, `mdgraphVersion`, `createdAt`, `visibility`, `sourceHash`, `configHash`, `provenance`, `counts`, `documents`, and optional `reports`.
+
+The private bundle contains `manifest.json`, `graph.db`, `config.json`, and a `reports/status-storage.json` snapshot. `sourceHash` is derived from canonical config plus sorted document path/hash records; it does not include Markdown body content or the absolute project root. Public or sanitized bundle profiles are not supported in 0.6.
+
+## `bundle verify --json`
+
+`mdgraph bundle verify <dir> --json` returns:
+
+- `bundleDir`: absolute path to the checked bundle directory.
+- `valid`: boolean result.
+- `errors`: validation failures.
+- `manifest`: parsed manifest when readable.
+- `counts`: graph counts read from bundled `graph.db` when available.
+- `schemaVersion`, `sourceHash`, and `configHash`: recomputed bundled values when available.
+- `freshness`: `state` (`fresh`, `stale`, or `unknown`) plus `reason`, comparing the bundle source hash to the current workspace when possible.
+
+The command exits non-zero when `valid` is `false`.
+
+## `report --json`
+
+`mdgraph report --json` returns a CI-friendly graph workflow report:
+
+- `projectRoot`, `generatedAt`, `mdgraphVersion`, and `indexed`.
+- `schema`: schema metadata with `schemaVersion`, `createdByVersion`, `updatedAt`, and `baseline` when indexed.
+- `counts`, `storage`, and `source`: graph counts, storage diagnostics, and source/config/document hashes when indexed.
+- `doctor`: doctor summary, warning counts, and top warning codes when indexed.
+- `eval`: evaluation query set, summary, and ranking metadata when `--eval` is supplied.
+- `bundle`: bundle verification result when `--bundle <dir>` is supplied.
+- `diff`: graph diff result when `--base <ref>` is supplied.
+- `benchmark`: paired benchmark result when `--benchmark <file>` is supplied.
+- `trend`: `first_run`, `previous_report_loaded`, or `previous_report_missing`. Trend state only reflects an explicit `--previous-report <file>` input; MDGraph does not write hidden report history.
+
+## `report --benchmark <file> --json`
+
+`mdgraph report --benchmark benchmark-runs.json --json` reads structured agent run records and embeds a `benchmark` object in the report. The input must be either a JSON array of run records or an object with a `runs` array. MDGraph does not parse full transcripts, call models, or run an agent.
+
+Each `AgentRunRecord` includes `id`, `questionId`, `question`, `mode` (`with_mdgraph` or `without_mdgraph`), timestamps, `toolCalls`, `directFileReads`, `textSearches`, `mdgraphCalls`, `finalCitations`, `rawFileFallback`, optional `tokenEstimate`, optional `characterBudget`, and `latencyMs`.
+
+The embedded `benchmark` object returns:
+
+- `format: "mdgraph-benchmark"` and `formatVersion: 1`.
+- `records`: number of parsed run records.
+- `summary`: question count, complete pair count, skipped pair count, and aggregate deltas. Deltas are `with_mdgraph - without_mdgraph`.
+- `pairs`: one entry per complete pair, each with `withMdgraph`, `withoutMdgraph`, and `delta` metrics for file reads, text searches, tool calls, MDGraph calls, character/token budgets, latency, raw-file fallback, and citation correctness.
+- `skipped`: incomplete, duplicate, or question-text-mismatched pairs. Exactly one `with_mdgraph` and one `without_mdgraph` record are required for a complete pair.
+
+Citation correctness is automatic when `questionId` matches a built-in evaluation case: cited paths are compared with expected document/section paths. For non-evaluation questions, citations use explicit `correct: true`, `correct: false`, or `correct: "unknown"` markers from the run record. `unknown` citations are counted separately and excluded from correctness percentages.
+
+## `diff --json`
+
+`mdgraph diff --base <ref> --json` compares the current indexed graph to an isolated temporary index built from a Git base revision and returns:
+
+- `mode`: currently `base_ref`.
+- `base`: requested `ref`, resolved Git `revision`, and base `sourceHash`.
+- `head`: current graph `sourceHash`.
+- `summary`: `documentsAdded`, `documentsModified`, `documentsDeleted`, `documentsRenamed`, `sectionsChanged`, `sourceRefsChanged`, `edgesChanged`, and `warningDelta`.
+- `documents`: changed Markdown document entries with `path`, optional `previousPath`, `change`, `hashChanged`, optional `statusChanged`, `sectionDelta`, `sourceRefDelta`, and optional `warningCodes`.
+- `impact`: `changedSourceRefs`, `affectedDocs`, and concise `prSummary` lines.
+
+Diff only compares Markdown graph records, source refs, and doctor warning codes. It does not parse source ASTs or infer runtime code impact. The base index is created in a temporary directory and does not replace the current `.mdgraph/graph.db`.
 
 ## `semantic status --json`
 

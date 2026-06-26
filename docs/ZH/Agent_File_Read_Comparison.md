@@ -2,6 +2,8 @@
 
 本文记录 0.3 阶段 query-first、file-read-second agent 工作流的早期证据。它是工程 case note，不是完整的真实 agent A/B benchmark。
 
+v0.6 的结构化 benchmark 契约使用 `mdgraph report --benchmark benchmark-runs.json --json`。该报告消费 paired `with_mdgraph` / `without_mdgraph` run records，并在不保存完整 transcript 的前提下计算聚合 delta。
+
 ## 方法
 
 对比使用仓库中已有的两个确定性来源：
@@ -63,7 +65,7 @@
 
 ## 后续测量
 
-真正的 0.3 A/B benchmark 应捕获相同问题下的完整 agent transcript，并比较：
+v0.6 benchmark report 应捕获相同问题下的结构化 run records，并比较：
 
 - 直接 file reads 和 text searches。
 - MDGraph tool calls。
@@ -71,4 +73,4 @@
 - 是否仍需要 raw file fallback。
 - 时间和 token budget。
 
-在该 benchmark 出现前，本文只能作为 agent integration design 的有限证据，不能作为产品级性能承诺。
+完整 transcript 应保留在公开文档之外。本文仍是有限的设计证据；可复现的 A/B 表面是结构化 `report --benchmark` 输入/输出契约。
