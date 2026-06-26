@@ -75,6 +75,40 @@ function runCleanProjectSmoke() {
   const trace = runCliJson(root, ["trace", "AuthService", "RedisTimeoutError", "--json"]);
   assertEqual(trace.found, true, "trace should connect AuthService to RedisTimeoutError");
 
+  const graphJson = runCliJson(root, ["export", "graphjson", "--json"]);
+  assertEqual(graphJson.format, "mdgraph-graphjson", "export graphjson should report the GraphJSON format");
+  assertEqual(graphJson.formatVersion, 1, "export graphjson should report formatVersion 1");
+  assertEqual(graphJson.counts.documents, 3, "export graphjson should include repository counts");
+  assert(graphJson.nodes.some((node) => node.kind === "source_ref" && node.path === "src/auth/AuthService.ts"), "export graphjson should include source refs");
+  assert(graphJson.edges.every((edge) => graphJson.nodes.some((node) => node.id === edge.fromId) && graphJson.nodes.some((node) => node.id === edge.toId)), "export graphjson should exclude dangling chunk endpoint edges");
+
+  const graphJsonPath = path.join(root, "graph.json");
+  fs.writeFileSync(graphJsonPath, `${JSON.stringify(graphJson, null, 2)}\n`, "utf8");
+  const graphJsonVerify = runCliJson(root, ["import", "graphjson", graphJsonPath, "--verify", "--json"]);
+  assertEqual(graphJsonVerify.valid, true, "import graphjson --verify should accept a fresh export");
+
+  const mermaid = runCli(root, ["export", "mermaid", "trace", "AuthService", "RedisTimeoutError"]);
+  assert(mermaid.stdout.includes("flowchart LR"), "export mermaid trace should emit Mermaid flowchart text");
+  assert(mermaid.stdout.includes("REFERENCES /") || mermaid.stdout.includes("DEFINES /"), "export mermaid trace should include edge kind labels");
+
+  const markdownIndex = runCli(root, ["export", "markdown-index"]);
+  assert(markdownIndex.stdout.includes("[[docs/auth-v2-design.md]]"), "export markdown-index should emit Obsidian-style document links");
+
+  const docsSite = runCliJson(root, ["export", "docs-site", "--json"]);
+  assertEqual(docsSite.format, "mdgraph-docsite-index", "export docs-site should emit a docs-site index");
+  assert(docsSite.documents.some((document) => document.path === "docs/auth-v2-design.md"), "export docs-site should include documents");
+
+  const bridgeUnsupported = runCliJson(root, ["export", "source-bridge", "--json"]);
+  assertEqual(bridgeUnsupported.status, "unsupported", "source bridge without artifact should be unsupported");
+
+  const codeGraphArtifact = path.join(root, "codegraph.json");
+  fs.writeFileSync(codeGraphArtifact, JSON.stringify({
+    files: [{ path: "src/auth/AuthService.ts", symbols: [{ name: "AuthService", kind: "class" }] }]
+  }), "utf8");
+  const bridge = runCliJson(root, ["export", "source-bridge", "--json", "--artifact", codeGraphArtifact]);
+  assertEqual(bridge.status, "ready", "source bridge should read a fixture CodeGraph artifact");
+  assertEqual(bridge.matched.length, 1, "source bridge should match one source ref");
+
   const doctor = runCliJson(root, ["doctor", "--json"]);
   assertEqual(totalDoctorIssues(doctor.summary), 0, "clean smoke docs should have no doctor issues");
   runCli(root, ["doctor", "--strict"]);

@@ -6,7 +6,7 @@ MDGraph uses this implemented pipeline: scanner -> parser -> extractor/resolver 
 
 | Area | Path | Responsibility |
 |---|---|---|
-| CLI | `src/bin/mdgraph.ts` | Commands for init, index, status, search, context, node, trace, eval, diff, bundle, report, semantic status, serve, watch, and doctor; doctor supports `--strict`, `--fail-on`, `--changed`, and `--since`. |
+| CLI | `src/bin/mdgraph.ts` | Commands for init, index, status, search, context, node, trace, eval, diff, bundle, report, export, import, semantic status, serve, watch, and doctor; doctor supports `--strict`, `--fail-on`, `--changed`, and `--since`. |
 | Config | `src/config/load-config.ts` | Default config, `.mdgraph/config.json` creation, and safe config merging. |
 | Scanner | `src/scanner/file-scanner.ts` | Finds Markdown files using include/exclude globs and max file size limits. |
 | Parser | `src/parser/*` | Front matter, Markdown AST, headings, code blocks, inline code, Markdown links, and WikiLinks. |
@@ -19,6 +19,7 @@ MDGraph uses this implemented pipeline: scanner -> parser -> extractor/resolver 
 | Bundle | `src/bundle/*` | Private directory graph bundle creation and verification using schema/source/config/document hashes. |
 | Reporting | `src/reporting/*` | CI-friendly graph workflow reports that aggregate counts, storage, doctor, eval, bundle, diff, and benchmark summaries. |
 | Diff | `src/diff/*` | Git base-ref documentation graph diff and PR impact summary generation. |
+| Export/Import | `src/export/*` | Deterministic GraphJSON, Mermaid, Markdown/docs-site, and read-only source bridge adapters. |
 | Semantic | `src/semantic/*` | Deterministic local vector generation, Float32 vector codec, provider status, and cosine scoring. |
 | MCP | `src/mcp/*` | Newline-delimited JSON-RPC MCP server and tool handlers. |
 | Watch | `src/watcher/file-watcher.ts` | Debounced incremental reindexing via chokidar. |
@@ -73,6 +74,14 @@ The full storage report is read-oriented observability. `doctor` promotes only a
 
 The diff report includes Markdown document additions, modifications, deletions, renames detected by Git, section/source-ref/edge count deltas, doctor warning-code deltas, changed source refs, affected document paths, and short PR summary lines. The base index is isolated in the OS temp directory and removed after the report. Diff does not inspect source-code ASTs, does not infer runtime code impact, and does not replace the current `.mdgraph/graph.db`.
 
+## Interoperability
+
+`buildGraphJsonExport` produces the versioned `mdgraph-graphjson` structural export from the current index. It includes documents, sections, entities, source refs, and edges whose endpoints are present in that structural node set. It preserves the full repository `counts` for status parity and adds `exportedCounts` for the omitted chunk/vector/content boundary. The export deliberately excludes chunk content, section content, vectors, SQLite internals, and the absolute project root.
+
+`verifyGraphJsonExport` validates GraphJSON shape, supported format version, counts, edge endpoints, and `graphHash` without opening or writing the local project database. `import graphjson --verify` is therefore an inspection path, not a merge import.
+
+`formatTraceMermaid` renders existing `traceNodes` results as deterministic Mermaid. Markdown/docs-site exports are derived from GraphJSON facts and produce adapter data only; they do not run a site generator. The CodeGraph source bridge reads an explicit local artifact and returns source-ref match summaries, but it does not create graph edges or affect indexing, query ranking, context packing, or MCP tools.
+
 ## Query Flow
 
 `searchGraph` combines and deduplicates:
@@ -107,5 +116,6 @@ The MCP server intentionally exposes only five tools. Tool output is text-first 
 - Storage diagnostics are exposed through `status --storage` and reused by doctor for storage health summaries; they are not graph facts and do not expand the MCP tool surface.
 - Private bundle artifacts are local workflow artifacts, not public exports. Public-safe sanitization and zip packaging are outside the current implementation.
 - Benchmark reports are aggregate-only measurements from explicit structured records; full transcripts, hosted analytics, and agent runtime capture stay outside MDGraph.
+- Interoperability adapters are read-oriented. GraphJSON verify, Mermaid/Markdown/docs-site exports, and source bridge reports do not merge external graphs into the main SQLite index.
 - `SAME_AS`, `RELATED_TO`, and `CONTRADICTS` are reserved edge kinds in the public model. The deterministic MVP does not emit them during indexing; contradiction-like signals are currently reported by `doctor` rather than inserted as graph edges.
 - The current implementation favors a compact MVP over broad Markdown/MDX dialect support.

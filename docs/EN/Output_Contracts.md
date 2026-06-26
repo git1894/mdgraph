@@ -102,6 +102,64 @@ Per-case `expected` includes expected documents, sections, entities, edge kinds,
 
 `mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project. `mdgraph eval --query-set ecc --path <project> --json` uses ECC-style path-only expected records so an external workflow corpus can be scored without copying its document content into MDGraph fixtures. `mdgraph eval --query-set cjk --path <project> --json` uses Chinese/Japanese expected records to measure CJK retrieval quality with the lightweight CJK n-gram preprocessing baseline. `mdgraph eval --query-mode semantic --json` requests optional semantic search and reports whether the local semantic reranker was active.
 
+## `export graphjson --json`
+
+`mdgraph export graphjson --json` returns a deterministic structural interoperability export:
+
+- `format: "mdgraph-graphjson"` and `formatVersion: 1`.
+- `schemaVersion`, `mdgraphVersion`, `exportProfile: "structural"`, `graphHash`, and `sourceHash`.
+- `counts`: the full repository counts returned by `status --json`.
+- `exportedCounts`: exported document, section, entity, source-ref, node, and edge counts.
+- `nodes`: document, section, entity, and source-ref nodes.
+- `edges`: structural edges whose endpoints are included in `nodes`.
+
+The structural profile excludes chunks, chunk content, section content, vectors, SQLite rowids, SQLite database paths, and the absolute project root. `counts.edges` can be larger than `exportedCounts.edges` because chunk endpoint edges are omitted.
+
+## `import graphjson --verify --json`
+
+`mdgraph import graphjson graph.json --verify --json` verifies a GraphJSON file without writing `.mdgraph/graph.db` and returns:
+
+- `valid`: boolean result.
+- `errors`: structured validation errors with `code`, `message`, optional `evidence`, and `remediation`.
+- `warnings`: non-fatal compatibility notes.
+- `format`, `formatVersion`, `schemaVersion`, `graphHash`, `counts`, and `exportedCounts` when readable.
+
+The command exits non-zero when `valid` is `false`. GraphJSON merge import is not supported in 0.7.
+
+## `export mermaid trace --json`
+
+`mdgraph export mermaid trace <from> <to> --json` returns:
+
+- `format: "mdgraph-mermaid"` and `formatVersion: 1`.
+- `diagramType: "trace"`.
+- `found`: whether the graph trace was found.
+- `diagram`: Mermaid flowchart text.
+- `trace`: the same trace result shape returned by `trace --json`.
+
+Without `--json`, the command prints only Mermaid text. The diagram renders existing graph trace facts; it does not generate an LLM summary.
+
+## `export docs-site --json`
+
+`mdgraph export docs-site --json` returns:
+
+- `format: "mdgraph-docsite-index"` and `formatVersion: 1`.
+- `sourceFormat: "mdgraph-graphjson"` and `graphHash`.
+- `documents`: per-document path, title, status, document type, trust tier, defined entities, source refs, outbound links, and inbound links.
+
+`mdgraph export markdown-index` prints an Obsidian-friendly Markdown view over the same graph facts.
+
+## `export source-bridge --json`
+
+`mdgraph export source-bridge --provider codegraph --artifact codegraph.json --json` returns a read-only source bridge report:
+
+- `format: "mdgraph-source-bridge"` and `formatVersion: 1`.
+- `provider: "codegraph"`.
+- `status`: `ready` or `unsupported`.
+- `reason`: unsupported/skipped reason when available.
+- `sourceRefs`, `matched`, and `unmatched`.
+
+The bridge reads only an explicit local CodeGraph-style JSON artifact. It does not create graph edges and does not affect indexing, search, context, or MCP tools.
+
 ## `bundle create --json`
 
 `mdgraph bundle create --profile private --json` creates a private directory artifact under `.mdgraph/bundles/private/` and returns:

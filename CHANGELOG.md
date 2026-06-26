@@ -6,6 +6,17 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.7.0 - 2026-06-26
+
+### Added
+
+- Added deterministic structural `mdgraph export graphjson --json` with versioned `mdgraph-graphjson` output, stable `graphHash`, full counts, exported counts, and no chunk content, vectors, SQLite internals, or absolute project root.
+- Added verify-only `mdgraph import graphjson <file> --verify --json` for GraphJSON shape, endpoint, count, version, and hash validation without writing the local index.
+- Added deterministic `mdgraph export mermaid trace <from> <to>` for rendering existing graph trace facts as Mermaid.
+- Added `mdgraph export markdown-index` and `mdgraph export docs-site --json` for Obsidian-friendly Markdown and docs-site data exports derived from GraphJSON facts.
+- Added read-only `mdgraph export source-bridge --provider codegraph --artifact <file>` for source-ref to CodeGraph-style artifact summaries without changing graph edges or query behavior.
+- Added focused interoperability tests and build-output CLI smoke coverage for the v0.7 export/import surface.
+
 ## 0.6.0 - 2026-06-26
 
 ### Added

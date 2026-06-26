@@ -102,6 +102,64 @@
 
 `--query-set ecc` 使用 ECC 风格 path-only 期望记录；`--query-set cjk` 使用中文/日文期望记录，用于度量轻量 CJK n-gram 预处理基线下的检索质量。`--query-mode semantic` 请求可选语义搜索，并报告本地语义 reranker 是否实际生效。`mdgraph eval` 不会自动索引目标项目，运行前需先执行 `mdgraph index`。
 
+## `export graphjson --json`
+
+`mdgraph export graphjson --json` 返回确定性的结构化互操作导出：
+
+- `format: "mdgraph-graphjson"` 和 `formatVersion: 1`。
+- `schemaVersion`、`mdgraphVersion`、`exportProfile: "structural"`、`graphHash` 和 `sourceHash`。
+- `counts`：与 `status --json` 相同的完整 repository counts。
+- `exportedCounts`：实际导出的 document、section、entity、source-ref、node 和 edge 计数。
+- `nodes`：document、section、entity 和 source-ref 节点。
+- `edges`：端点都包含在 `nodes` 中的结构化边。
+
+Structural profile 不包含 chunks、chunk content、section content、vectors、SQLite rowid、SQLite 数据库路径或绝对项目根目录。因为会省略 chunk endpoint edges，`counts.edges` 可能大于 `exportedCounts.edges`。
+
+## `import graphjson --verify --json`
+
+`mdgraph import graphjson graph.json --verify --json` 只校验 GraphJSON 文件，不写 `.mdgraph/graph.db`，返回：
+
+- `valid`：布尔结果。
+- `errors`：结构化校验错误，包含 `code`、`message`、可选 `evidence` 和 `remediation`。
+- `warnings`：非致命兼容性说明。
+- 可读取时的 `format`、`formatVersion`、`schemaVersion`、`graphHash`、`counts` 和 `exportedCounts`。
+
+当 `valid` 为 `false` 时命令返回非零退出码。0.7 不支持 GraphJSON merge import。
+
+## `export mermaid trace --json`
+
+`mdgraph export mermaid trace <from> <to> --json` 返回：
+
+- `format: "mdgraph-mermaid"` 和 `formatVersion: 1`。
+- `diagramType: "trace"`。
+- `found`：是否找到 graph trace。
+- `diagram`：Mermaid flowchart 文本。
+- `trace`：与 `trace --json` 相同的 trace result shape。
+
+不带 `--json` 时只输出 Mermaid 文本。图只渲染已有 graph trace 事实，不生成 LLM 摘要。
+
+## `export docs-site --json`
+
+`mdgraph export docs-site --json` 返回：
+
+- `format: "mdgraph-docsite-index"` 和 `formatVersion: 1`。
+- `sourceFormat: "mdgraph-graphjson"` 和 `graphHash`。
+- `documents`：每个文档的 path、title、status、document type、trust tier、defined entities、source refs、outbound links 和 inbound links。
+
+`mdgraph export markdown-index` 会输出基于相同图事实的 Obsidian-friendly Markdown 视图。
+
+## `export source-bridge --json`
+
+`mdgraph export source-bridge --provider codegraph --artifact codegraph.json --json` 返回只读 source bridge report：
+
+- `format: "mdgraph-source-bridge"` 和 `formatVersion: 1`。
+- `provider: "codegraph"`。
+- `status`：`ready` 或 `unsupported`。
+- 可用时的 `reason`。
+- `sourceRefs`、`matched` 和 `unmatched`。
+
+Bridge 只读取显式传入的本地 CodeGraph-style JSON artifact。它不创建 graph edges，也不影响 indexing、search、context 或 MCP 工具。
+
 ## `bundle create --json`
 
 `mdgraph bundle create --profile private --json` 会在 `.mdgraph/bundles/private/` 下创建私有目录 artifact，并返回：

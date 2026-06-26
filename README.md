@@ -211,6 +211,14 @@ node dist/bin/mdgraph.js diff --base main --json                # PR documentati
 node dist/bin/mdgraph.js report --json --base main              # Include diff summary in the report
 node dist/bin/mdgraph.js report --json --benchmark benchmark-runs.json # Include paired agent run-record deltas
 
+# Interoperability exports
+node dist/bin/mdgraph.js export graphjson --json                # Deterministic structural GraphJSON
+node dist/bin/mdgraph.js import graphjson graph.json --verify --json # Verify GraphJSON without writing the index
+node dist/bin/mdgraph.js export mermaid trace "AuthService" "RedisTimeoutError" # Mermaid trace diagram
+node dist/bin/mdgraph.js export markdown-index                  # Obsidian-friendly Markdown graph index
+node dist/bin/mdgraph.js export docs-site --json                # Lightweight docs-site data
+node dist/bin/mdgraph.js export source-bridge --provider codegraph --artifact codegraph.json --json # Read-only source bridge report
+
 # MCP Server
 node dist/bin/mdgraph.js serve --mcp                       # Start stdio MCP server
 node dist/bin/mdgraph.js serve --mcp --path /your/project  # With explicit project root
@@ -240,6 +248,10 @@ All query commands support `--json` for structured output useful to agents and s
 `diff --base <ref>` builds an isolated temporary index for the base Git revision and compares it to the current graph index. It reports added, modified, deleted, and renamed Markdown documents, graph count deltas, doctor warning deltas, changed source refs, and short PR summary lines. It does not inspect source-code ASTs or replace the current `.mdgraph/graph.db`.
 
 `report --benchmark <file>` reads structured with/without-MDGraph agent run records and embeds paired deltas for file reads, text searches, tool calls, MDGraph calls, character/token budgets, latency, raw file fallback, and citation correctness. It does not parse full transcripts or run agents. Incomplete pairs are reported as skipped; `unknown` citations are excluded from correctness percentages.
+
+`export graphjson` writes a deterministic structural graph export for other tools. It includes documents, sections, entities, source refs, and edges with stable ordering plus `graphHash`; it deliberately excludes chunk content, vectors, SQLite internals, and the absolute project root. `import graphjson --verify` validates that export shape and hash only; it does not merge external graphs into `.mdgraph/graph.db`.
+
+`export mermaid trace` renders an existing graph trace as deterministic Mermaid. `export markdown-index` and `export docs-site --json` produce adapter data for Obsidian-style notes and docs-site systems without running a site generator. `export source-bridge --provider codegraph` reads an explicit local CodeGraph-style JSON artifact and reports source-ref matches; missing artifacts are reported as unsupported, and bridge output does not affect indexing, search, context, or MCP tools.
 
 ### Team Workflow Examples
 
@@ -538,7 +550,7 @@ The SQLite database lives at `.mdgraph/graph.db` and stores the following record
 
 | Area | Path | Responsibility |
 |------|------|---------------|
-| CLI | `src/bin/mdgraph.ts` | Commander-based CLI — init, index, status, search, context, node, trace, serve, watch, doctor |
+| CLI | `src/bin/mdgraph.ts` | Commander-based CLI — init, index, status, search, context, node, trace, eval, diff, bundle, report, export, import, serve, watch, doctor |
 | Config | `src/config/load-config.ts` | `.mdgraph/config.json` creation, defaults, safe merging |
 | Scanner | `src/scanner/file-scanner.ts` | Glob-based Markdown file discovery with optional gitignore support |
 | Parser | `src/parser/*` | Front matter (yaml), Markdown AST (remark-parse, GFM), headings, links, WikiLinks, code blocks |
@@ -549,6 +561,7 @@ The SQLite database lives at `.mdgraph/graph.db` and stores the following record
 | Semantic | `src/semantic/local-embedding.ts` | Deterministic local hash vector generation and cosine similarity |
 | Benchmark | `src/benchmark/*` | Structured agent A/B run-record parsing and paired delta aggregation |
 | Bundle | `src/bundle/*` | Private directory graph bundle creation and verification |
+| Export/Import | `src/export/*` | Deterministic GraphJSON, Mermaid, Markdown/docs-site, and read-only bridge adapters |
 | Reporting | `src/reporting/*` | CI-friendly graph workflow report aggregation |
 | MCP | `src/mcp/*` | JSON-RPC stdio MCP server, tool handlers, server instructions |
 | Watch | `src/watcher/file-watcher.ts` | Chokidar-based file watcher with debounced incremental re-indexing |
@@ -573,6 +586,7 @@ On current Node versions, `node:sqlite` may emit an experimental startup warning
 - **Watch mode updates the database** — it indexes once on startup, then incrementally updates on changes. MCP tools open the current state on each call.
 - **Doctor checks are rule-based** — they point maintainers at likely cleanup work and are not a gate on indexing.
 - **Storage diagnostics are a report, not a repair tool** — use `status --storage` to inspect growth signals, then run `index --full` when compaction is needed.
+- **Interoperability is adapter-first** — GraphJSON, Mermaid, Markdown/docs-site exports, and source bridge reports are read-oriented adapters. They do not expand the core indexer into a graph database platform or source-code analysis system.
 - **`SAME_AS`, `RELATED_TO`, and `CONTRADICTS` are reserved edge kinds** — the deterministic MVP does not emit them during indexing. Contradiction-like signals are reported by doctor rather than inserted as graph edges.
 - **Limited to standard Markdown** — MDX and other extended Markdown dialects are not yet fully supported.
 

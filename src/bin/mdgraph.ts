@@ -10,6 +10,10 @@ import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeResolution } from "../db/repositories.js";
 import { formatGraphDiff, generateGraphDiff } from "../diff/graph-diff.js";
 import { EVALUATION_QUERY_SET_NAMES, evaluateRetrieval } from "../evaluation/retrieval-eval.js";
+import { buildMermaidTraceExport } from "../export/diagram.js";
+import { buildGraphJsonExport, formatGraphJsonVerification, readGraphJsonFile, stableGraphJson, verifyGraphJsonExport } from "../export/graphjson.js";
+import { buildDocsSiteIndex, formatObsidianMarkdownIndex } from "../export/markdown-index.js";
+import { buildCodeGraphBridgeReport, type SourceBridgeReport } from "../export/source-bridge.js";
 import { indexProject } from "../indexer.js";
 import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
@@ -224,6 +228,135 @@ bundleCommand
   .action((dir: string, options: { json?: boolean }) => {
     const result = verifyGraphBundle(dir, { projectRoot: process.cwd() });
     printResult(options.json, result, formatBundleVerify(result));
+    if (!result.valid) {
+      process.exitCode = 1;
+    }
+  });
+
+const exportCommand = program
+  .command("export")
+  .description("Export MDGraph interoperability artifacts");
+
+exportCommand
+  .command("graphjson")
+  .description("Export a deterministic structural GraphJSON view")
+  .option("--json", "Print JSON output")
+  .action((options: { json?: boolean }) => {
+    const repository = openRepository();
+    try {
+      const graph = buildGraphJsonExport(process.cwd(), repository);
+      if (options.json) {
+        printResult(true, graph, "");
+        return;
+      }
+      process.stdout.write(stableGraphJson(graph));
+    } finally {
+      closeRepository(repository);
+    }
+  });
+
+const exportMermaidCommand = exportCommand
+  .command("mermaid")
+  .description("Export deterministic Mermaid diagrams");
+
+exportMermaidCommand
+  .command("trace")
+  .description("Export a Mermaid trace path diagram")
+  .argument("<from>")
+  .argument("<to>")
+  .option("--json", "Print JSON output")
+  .option("--depth <number>", "Maximum graph depth", parseInteger)
+  .action((from: string, to: string, options: { json?: boolean; depth?: number }) => {
+    const repository = openRepository();
+    try {
+      const trace = traceNodes(repository, from, to, options.depth ?? 6);
+      const result = buildMermaidTraceExport(trace);
+      printResult(options.json, result, result.diagram);
+    } finally {
+      closeRepository(repository);
+    }
+  });
+
+exportCommand
+  .command("markdown-index")
+  .description("Export an Obsidian-friendly Markdown graph index")
+  .action(() => {
+    const repository = openRepository();
+    try {
+      const graph = buildGraphJsonExport(process.cwd(), repository);
+      console.log(formatObsidianMarkdownIndex(graph));
+    } finally {
+      closeRepository(repository);
+    }
+  });
+
+exportCommand
+  .command("docs-site")
+  .description("Export lightweight docs-site graph data")
+  .option("--json", "Print JSON output")
+  .action((options: { json?: boolean }) => {
+    const repository = openRepository();
+    try {
+      const graph = buildGraphJsonExport(process.cwd(), repository);
+      const index = buildDocsSiteIndex(graph);
+      printResult(options.json, index, JSON.stringify(index, null, 2));
+    } finally {
+      closeRepository(repository);
+    }
+  });
+
+exportCommand
+  .command("source-bridge")
+  .description("Export a read-only source bridge report")
+  .option("--json", "Print JSON output")
+  .option("--provider <provider>", "Bridge provider", "codegraph")
+  .option("--artifact <file>", "Read-only provider artifact to inspect")
+  .action((options: { json?: boolean; provider: string; artifact?: string }) => {
+    if (options.provider !== "codegraph") {
+      throw new Error(`Unsupported source bridge provider: ${options.provider}. MDGraph 0.7 supports the codegraph read-only bridge spike.`);
+    }
+    const repository = openRepository();
+    try {
+      const report = buildCodeGraphBridgeReport(repository, { artifact: options.artifact });
+      printResult(options.json, report, formatSourceBridgeReport(report));
+    } finally {
+      closeRepository(repository);
+    }
+  });
+
+const importCommand = program
+  .command("import")
+  .description("Inspect external MDGraph interoperability artifacts without writing the local index");
+
+importCommand
+  .command("graphjson")
+  .description("Verify a GraphJSON export")
+  .argument("<file>")
+  .option("--json", "Print JSON output")
+  .option("--verify", "Verify only; required because GraphJSON merge import is not supported")
+  .action((file: string, options: { json?: boolean; verify?: boolean }) => {
+    if (!options.verify) {
+      throw new Error("GraphJSON import is verify-only in MDGraph 0.7. Pass --verify.");
+    }
+    let value: unknown;
+    try {
+      value = readGraphJsonFile(file);
+    } catch (error) {
+      const result = {
+        valid: false,
+        errors: [{
+          code: "graphjson.read_failed",
+          message: `Failed to read GraphJSON file: ${error instanceof Error ? error.message : String(error)}`,
+          remediation: "Pass a readable JSON file exported by `mdgraph export graphjson --json`."
+        }],
+        warnings: []
+      };
+      printResult(options.json, result, formatGraphJsonVerification(result));
+      process.exitCode = 1;
+      return;
+    }
+    const result = verifyGraphJsonExport(value);
+    printResult(options.json, result, formatGraphJsonVerification(result));
     if (!result.valid) {
       process.exitCode = 1;
     }
@@ -513,6 +646,24 @@ function formatBundleVerify(result: ReturnType<typeof verifyGraphBundle>): strin
   }
   if (result.errors.length) {
     lines.push("Errors:", ...result.errors.map((error) => `- ${error}`));
+  }
+  return lines.join("\n");
+}
+
+function formatSourceBridgeReport(report: SourceBridgeReport): string {
+  const lines = [
+    "MDGraph source bridge",
+    `Provider: ${report.provider}`,
+    `Status: ${report.status}`,
+    `Source refs: ${report.sourceRefs}`,
+    `Matched: ${report.matched.length}`,
+    `Unmatched: ${report.unmatched.length}`
+  ];
+  if (report.reason) {
+    lines.push(`Reason: ${report.reason}`);
+  }
+  if (report.matched.length) {
+    lines.push("Matches:", ...report.matched.map((match) => `- ${match.sourceRef} -> ${match.artifactPath}${match.symbols.length ? ` (${match.symbols.map((symbol) => symbol.name).join(", ")})` : ""}`));
   }
   return lines.join("\n");
 }

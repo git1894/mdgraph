@@ -590,6 +590,11 @@ export class GraphRepository {
     return rows.map((row) => rowToSection(row));
   }
 
+  allEntities(): GraphEntity[] {
+    const rows = this.db.prepare("SELECT * FROM entities ORDER BY kind, normalized_name, id").all() as Record<string, unknown>[];
+    return rows.map(rowToEntity);
+  }
+
   allSourceRefs(): SourceRef[] {
     const rows = this.db.prepare("SELECT * FROM source_refs ORDER BY path").all() as Record<string, unknown>[];
     return rows.map(rowToSourceRef);
