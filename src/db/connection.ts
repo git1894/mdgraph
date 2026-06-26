@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { databasePath } from "../config/load-config.js";
+import { encodeVectorJsonAsFloat32Blob } from "../semantic/vector-codec.js";
 import { createDatabase, type SqliteDatabase } from "./sqlite-adapter.js";
 
 export interface OpenDatabaseOptions {
@@ -34,6 +35,7 @@ export function openDatabase(projectRoot: string, options: OpenDatabaseOptions =
     const schemaSql = readSchemaSql();
     db.exec(schemaSql);
     migrateChunkFtsSchema(db, schemaSql);
+    migrateChunkVectorSchema(db, schemaSql);
   }
   return db;
 }
@@ -63,6 +65,52 @@ function migrateChunkFtsSchema(db: SqliteDatabase, schemaSql: string): void {
 function isExternalContentChunkFts(sql: string): boolean {
   const normalized = sql.toLowerCase().replace(/\s+/g, " ");
   return /content\s*=\s*'chunks'/.test(normalized) && /content_rowid\s*=\s*'rowid'/.test(normalized);
+}
+
+function migrateChunkVectorSchema(db: SqliteDatabase, schemaSql: string): void {
+  const columns = tableColumns(db, "chunk_vectors");
+  if (!columns.has("vector_json")) {
+    return;
+  }
+
+  const rows = db.prepare(`
+    SELECT chunk_id, provider, model, dimensions, vector_json, created_at
+    FROM chunk_vectors
+  `).all() as Array<{
+    chunk_id: string;
+    provider: string;
+    model: string;
+    dimensions: number;
+    vector_json: string;
+    created_at: string;
+  }>;
+
+  db.exec("DROP INDEX IF EXISTS idx_chunk_vectors_provider;");
+  db.exec("ALTER TABLE chunk_vectors RENAME TO chunk_vectors_legacy;");
+  db.exec(schemaSql);
+
+  const insert = db.prepare(`
+    INSERT INTO chunk_vectors (chunk_id, provider, model, dimensions, vector_blob, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of rows) {
+    insert.run(
+      row.chunk_id,
+      row.provider,
+      row.model,
+      row.dimensions,
+      encodeVectorJsonAsFloat32Blob(row.vector_json),
+      row.created_at
+    );
+  }
+
+  db.exec("DROP TABLE chunk_vectors_legacy;");
+  compactDatabase(db);
+}
+
+function tableColumns(db: SqliteDatabase, tableName: string): Set<string> {
+  const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  return new Set(rows.map((row) => row.name));
 }
 
 function compactDatabase(db: SqliteDatabase): void {

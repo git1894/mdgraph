@@ -2,6 +2,18 @@
 
 这些问题将计划中的代理评估指导转化为可复用的冒烟测试集。在索引后，针对真实的项目文档语料库使用它们。
 
+内置 CLI 入口：
+
+```bash
+mdgraph eval --json
+mdgraph eval --path /path/to/project --json
+mdgraph eval --query-set ecc --path /path/to/ecc --json
+mdgraph eval --query-set cjk --path /path/to/project --json
+mdgraph eval --query-mode semantic --json
+```
+
+`mdgraph eval` 默认运行 `alpha` query set，并报告 pass/fail 以及轻量检索指标。它还报告确定性的排序诊断：query mode、RRF 搜索融合通道、MMR-style 跨文档上下文打包，以及可选语义 reranking 状态。`--query-set ecc` 面向已索引的 ECC 风格外部语料，只保存 path-only 期望记录。`--query-set cjk` 面向小型中文/日文检索基线，并由轻量 CJK n-gram 预处理覆盖连续 CJK 查询。它是确定性的工程 smoke 检查，不是完整 IR benchmark 或真实 agent A/B benchmark。
+
 1. 为什么某个特定的错误码会影响特定的用户流程？
 2. 给定的设计文档依赖于哪些早期决策？
 3. 某个特定的 API 路由在哪里定义、又在哪里被引用？
@@ -39,5 +51,17 @@
 - 答案是否包含可解释的图路径。
 - MDGraph 返回的上下文是否足够，无需进一步检查文件。
 - 整个代理运行的时间和工具调用次数。
+- `mdgraph eval` 指标：top-K 文档召回、预期章节召回、上下文精度、trace 成功率、延迟、返回字符数、预算适配、fanout、上下文多样性、reason 覆盖率和 ranking reason 覆盖率。
+- `mdgraph eval` 排序报告：query mode、RRF 搜索融合通道、MMR-style 上下文打包策略、可选 reranker 状态和 semantic-active case 数量。
 
 当前仓库已有单元测试、集成测试、MCP 测试、CLI 测试、语义测试、增量测试和 doctor 测试，但尚未针对这些问题运行真实的代理 A/B 基准测试。
+
+## CJK 期望记录
+
+`cjk` query set 是 v0.5 的中文/日文检索基线。它使用仓库测试 fixture `createCjkFixtureDocs` 中的期望记录，覆盖中文 design/API/runbook/spec 文档和一篇日文 design 文档。case 范围包括：
+
+- 空格分隔的中文关键词查询，例如 `登录流程 缓存超时 认证重试`。
+- 连续中文自然语言查询，例如 `缓存超时影响登录流程的处理`，该 case 由轻量 CJK n-gram 预处理覆盖。
+- 混合 Latin/CJK 的 config key、API route、source ref 和日文 symbol 查询。
+
+后续 CJK tokenizer、RRF/MMR 或 reranking 改动应和这个基线对比，但远程模型仍不应成为索引或搜索的必需路径。

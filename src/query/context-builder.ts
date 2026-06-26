@@ -1,9 +1,10 @@
 import type { EdgeKind, GraphEdge, GraphEntity, MDGraphConfig, Provenance, SearchResult, SourceRef, TrustTier } from "../types.js";
 import { GraphRepository, type ChunkSearchRow, type NodeRecord } from "../db/repositories.js";
-import { searchGraph } from "./search.js";
+import { searchGraph, type SearchOptions } from "./search.js";
 import { normalizePath, uniqueStrings } from "../utils/text.js";
 
 const DEFAULT_MAX_CONTEXT_NODES = 16;
+export const CONTEXT_PACKING_STRATEGY = "mmr-style-document-round-robin" as const;
 
 export interface ContextItem {
   path: string;
@@ -53,6 +54,10 @@ export interface ContextDebug {
   candidateCount: number;
   directCandidates: number;
   expandedCandidates: number;
+  packingStrategy: typeof CONTEXT_PACKING_STRATEGY;
+  packedItems: number;
+  packedUniqueDocuments: number;
+  packingDiversityRatio: number;
   budgetTruncatedItems: number;
   budgetSkippedItems: number;
 }
@@ -80,11 +85,23 @@ export interface ContextBuildOptions {
   searchLimit?: number;
   maxDepth?: number;
   mode?: ContextAutoMode;
+  searchOptions?: SearchOptions;
 }
 
 interface ContextCollection {
   candidates: ContextCandidate[];
-  debug: Omit<ContextDebug, "candidateCount" | "directCandidates" | "expandedCandidates" | "budgetTruncatedItems" | "budgetSkippedItems">;
+  debug: Omit<
+    ContextDebug,
+    | "candidateCount"
+    | "directCandidates"
+    | "expandedCandidates"
+    | "packingStrategy"
+    | "packedItems"
+    | "packedUniqueDocuments"
+    | "packingDiversityRatio"
+    | "budgetTruncatedItems"
+    | "budgetSkippedItems"
+  >;
 }
 
 interface PackedContext {
@@ -103,7 +120,7 @@ export function buildContext(
   const maxChars = positiveIntegerOr(options.maxChars, config.search.maxContextChars);
   const searchLimit = positiveIntegerOr(options.searchLimit, config.search.defaultLimit * 2);
   const maxDepth = positiveIntegerOr(options.maxDepth, config.search.maxDepth);
-  const results = searchGraph(repository, config, query, searchLimit);
+  const results = searchGraph(repository, config, query, searchLimit, options.searchOptions);
   const collection = collectContextCandidates(repository, config, results, maxDepth);
   const candidates = knownFiles.length
     ? mergeKnownFileCandidates(repository, collection.candidates, knownFiles)
@@ -120,6 +137,12 @@ export function buildContext(
       candidateCount: candidates.length,
       directCandidates: candidates.filter((candidate) => candidate.direct).length,
       expandedCandidates: candidates.filter((candidate) => !candidate.direct).length,
+      packingStrategy: CONTEXT_PACKING_STRATEGY,
+      packedItems: result.items.length,
+      packedUniqueDocuments: uniqueStrings(result.items.map((item) => item.path)).length,
+      packingDiversityRatio: result.items.length
+        ? Number((uniqueStrings(result.items.map((item) => item.path)).length / result.items.length).toFixed(4))
+        : 0,
       budgetTruncatedItems: packed.budgetTruncatedItems,
       budgetSkippedItems: packed.budgetSkippedItems
     }

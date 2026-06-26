@@ -13,6 +13,8 @@ import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
 import { explainSearchGraph, searchGraph } from "../query/search.js";
 import { traceNodes } from "../query/trace.js";
+import { semanticStatusReport, type SemanticStatusReport } from "../semantic/status.js";
+import type { SearchQueryMode } from "../types.js";
 import { packageVersion } from "../version.js";
 import { watchProject } from "../watcher/file-watcher.js";
 
@@ -157,13 +159,41 @@ program
   .option("--path <path>", "Project root to evaluate", process.cwd())
   .option("--limit <number>", "Search results per evaluation case", parseInteger)
   .option("--query-set <name>", `Evaluation query set (${EVALUATION_QUERY_SET_NAMES.join(", ")})`, "alpha")
-  .action((options: { json?: boolean; path: string; limit?: number; querySet: string }) => {
+  .option("--query-mode <mode>", "Search query mode for evaluation (auto, keyword, semantic)", parseSearchQueryMode, "auto")
+  .action((options: { json?: boolean; path: string; limit?: number; querySet: string; queryMode: SearchQueryMode }) => {
     const projectRoot = validateProjectRoot(options.path);
     const config = loadConfig(projectRoot);
     const repository = openRepository(projectRoot);
     try {
-      const report = evaluateRetrieval(repository, config, { limit: options.limit, querySet: options.querySet });
+      const report = evaluateRetrieval(repository, config, { limit: options.limit, querySet: options.querySet, queryMode: options.queryMode });
       printResult(options.json, report, formatEvaluationReport(report));
+    } finally {
+      closeRepository(repository);
+    }
+  });
+
+const semanticCommand = program
+  .command("semantic")
+  .description("Inspect optional semantic vector indexing");
+
+semanticCommand
+  .command("status")
+  .description("Show semantic provider, vector coverage, and reindex guidance")
+  .option("--json", "Print JSON output")
+  .option("--path <path>", "Project root to inspect", process.cwd())
+  .action((options: { json?: boolean; path: string }) => {
+    const projectRoot = validateProjectRoot(options.path);
+    const config = loadConfig(projectRoot);
+    if (!fs.existsSync(databasePath(projectRoot))) {
+      const report = semanticStatusReport(config, undefined, undefined);
+      printResult(options.json, { projectRoot, ...report }, formatSemanticStatus(projectRoot, report));
+      return;
+    }
+
+    const repository = openRepository(projectRoot);
+    try {
+      const report = semanticStatusReport(config, repository.counts(), repository.storageDiagnostics());
+      printResult(options.json, { projectRoot, ...report }, formatSemanticStatus(projectRoot, report));
     } finally {
       closeRepository(repository);
     }
@@ -307,9 +337,12 @@ function formatSearchExplanation(explanation: ReturnType<typeof explainSearchGra
     : ["No results."];
   return [
     `Query: ${explanation.query}`,
+    `Query mode: ${explanation.queryMode}`,
     `FTS query: ${explanation.ftsQuery || "none"}`,
     `Entity candidates: ${explanation.entityCandidates.join(", ") || "none"}`,
-    `Semantic enabled: ${explanation.semanticEnabled}`,
+    `Semantic requested: ${explanation.semanticEnabled}`,
+    `Semantic active: ${explanation.semanticActive}`,
+    `Ranking: ${explanation.ranking.fusion} (channels: ${explanation.ranking.channels.join(", ") || "none"}, reranker: ${explanation.ranking.optionalReranker})`,
     "Matched entities:",
     ...entityLines,
     "Results:",
@@ -339,6 +372,7 @@ function formatContext(context: ReturnType<typeof buildContext>): string {
     `Visited nodes: ${context.debug.visitedNodes}`,
     `Expanded edges: ${context.debug.expandedEdges}`,
     `Candidates: ${context.debug.candidateCount} (${context.debug.directCandidates} direct, ${context.debug.expandedCandidates} expanded)`,
+    `Packing: ${context.debug.packingStrategy}, items: ${context.debug.packedItems}, unique documents: ${context.debug.packedUniqueDocuments}, diversity: ${context.debug.packingDiversityRatio.toFixed(2)}`,
     `Skipped visited: ${context.debug.skippedVisitedNodes}, node-limit: ${context.debug.skippedByNodeLimit}, depth: ${context.debug.skippedByDepth}`,
     `Budget truncated items: ${context.debug.budgetTruncatedItems}, skipped items: ${context.debug.budgetSkippedItems}`
   ].join("\n");
@@ -360,6 +394,8 @@ function formatEvaluationReport(report: ReturnType<typeof evaluateRetrieval>): s
     `Average top-K document recall: ${formatMetric(report.summary.averageTopKDocumentRecall)}`,
     `Average expected-section recall: ${formatMetric(report.summary.averageExpectedSectionRecall)}`,
     `Average context precision: ${formatMetric(report.summary.averageContextPrecision)}`,
+    `Average context diversity: ${formatMetric(report.summary.averageContextDiversity)}`,
+    `Ranking: ${report.ranking.searchFusion}, query mode: ${report.ranking.queryMode}, packing: ${report.ranking.contextPackingStrategy}, reranker: ${report.ranking.optionalReranker}`,
     `Average latency: ${report.summary.averageLatencyMs.toFixed(1)} ms`,
     "",
     ...report.cases.map((result) => {
@@ -367,12 +403,27 @@ function formatEvaluationReport(report: ReturnType<typeof evaluateRetrieval>): s
       return [
         `${result.id}: ${status}`,
         `  query: ${result.query}`,
-        `  topKDocumentRecall=${formatMetric(result.metrics.topKDocumentRecall)}, expectedSectionRecall=${formatMetric(result.metrics.expectedSectionRecall)}, contextPrecision=${formatMetric(result.metrics.contextPrecision)}`,
+        `  topKDocumentRecall=${formatMetric(result.metrics.topKDocumentRecall)}, expectedSectionRecall=${formatMetric(result.metrics.expectedSectionRecall)}, contextPrecision=${formatMetric(result.metrics.contextPrecision)}, contextDiversity=${formatMetric(result.metrics.contextDiversity)}`,
         `  traceSuccess=${result.metrics.traceSuccess ?? "n/a"}, returnedChars=${result.metrics.returnedChars}, budgetFit=${result.metrics.budgetFit}`
       ].join("\n");
     })
   ];
   return lines.join("\n");
+}
+
+function formatSemanticStatus(projectRoot: string, report: SemanticStatusReport): string {
+  return [
+    "MDGraph semantic status",
+    `Project: ${projectRoot}`,
+    `State: ${report.state}`,
+    `Configured provider: ${report.provider}/${report.model} (${report.dimensions} dimensions, enabled: ${report.enabled})`,
+    `Provider supported: ${report.providerSupported}`,
+    `Indexed: ${report.indexed}`,
+    `Vectors: ${report.vectors}/${report.chunks} chunks`,
+    `Vector storage: ${report.vectorStorageFormat}`,
+    `Indexed providers: ${report.indexedProviders.map((provider) => `${provider.provider}/${provider.model}/${provider.dimensions}=${provider.vectors}`).join(", ") || "none"}`,
+    `Guidance: ${report.guidance.join(" ") || "none"}`
+  ].join("\n");
 }
 
 function formatMetric(value: number): string {
@@ -415,6 +466,13 @@ function parseInteger(value: string): number {
     throw new Error(`Expected a positive integer, got ${value}`);
   }
   return parsed;
+}
+
+function parseSearchQueryMode(value: string): SearchQueryMode {
+  if (value === "auto" || value === "keyword" || value === "semantic") {
+    return value;
+  }
+  throw new Error(`Expected query mode to be one of auto, keyword, or semantic; got ${value}`);
 }
 
 function doctorIssueCount(summary: Awaited<ReturnType<typeof runDoctor>>["summary"]): number {

@@ -1,4 +1,5 @@
 import type { MDGraphConfig } from "../types.js";
+import { ftsQueryTokens } from "../utils/fts.js";
 
 export const LOCAL_EMBEDDING_PROVIDER = "local-hash";
 
@@ -8,7 +9,7 @@ export function supportsLocalEmbedding(config: MDGraphConfig): boolean {
 
 export function embedTextLocal(content: string, dimensions: number): number[] {
   const vector = Array.from({ length: dimensions }, () => 0);
-  const tokens = tokenize(content);
+  const tokens = ftsQueryTokens(content);
 
   for (const token of tokens) {
     const index = positiveHash(token) % dimensions;
@@ -17,12 +18,6 @@ export function embedTextLocal(content: string, dimensions: number): number[] {
   }
 
   return normalizeVector(vector);
-}
-
-function tokenize(content: string): string[] {
-  return content
-    .toLowerCase()
-    .match(/[\p{L}\p{N}_-]{2,}/gu) ?? [];
 }
 
 function positiveHash(value: string): number {

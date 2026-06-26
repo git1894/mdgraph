@@ -179,6 +179,7 @@ node dist/bin/mdgraph.js index --full --semantic        # Full rebuild with vect
 node dist/bin/mdgraph.js status                         # Graph counts and DB health
 node dist/bin/mdgraph.js status --json                  # Machine-readable output
 node dist/bin/mdgraph.js status --storage --json        # Counts plus storage diagnostics
+node dist/bin/mdgraph.js semantic status --json         # Semantic provider, vector coverage, and reindex guidance
 
 # Query
 node dist/bin/mdgraph.js search "authentication timeout"             # FTS5 + entity search
@@ -197,6 +198,8 @@ node dist/bin/mdgraph.js eval                              # Run built-in alpha 
 node dist/bin/mdgraph.js eval --json                       # Machine-readable metrics
 node dist/bin/mdgraph.js eval --path /your/project --json  # Evaluate an explicit indexed project
 node dist/bin/mdgraph.js eval --query-set ecc --path /path/to/ecc --json # ECC path-only expected records
+node dist/bin/mdgraph.js eval --query-set cjk --path /path/to/project --json # CJK retrieval baseline
+node dist/bin/mdgraph.js eval --query-mode semantic --json # Evaluate optional semantic reranking diagnostics
 
 # MCP Server
 node dist/bin/mdgraph.js serve --mcp                       # Start stdio MCP server
@@ -220,7 +223,7 @@ node dist/bin/mdgraph.js help                              # All commands
 node dist/bin/mdgraph.js help search                       # Command-specific help
 ```
 
-All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
+All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality, RRF search fusion, MMR-style document-diverse context packing, query mode, and optional semantic reranking diagnostics; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content; `--query-set cjk` records a small Chinese/Japanese retrieval baseline covered by lightweight CJK n-gram preprocessing. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
 
 ---
 
@@ -440,7 +443,7 @@ The SQLite database lives at `.mdgraph/graph.db` and stores the following record
 | `edges` | Graph relationships — kind (CONTAINS/DEFINES/REFERENCES/DEPENDS_ON/LINKS_TO/IMPLEMENTS/REFERENCES_SOURCE/SUPERSEDES/DEPRECATED_BY), weight, confidence, provenance (frontmatter/markdown_link/wikilink/declared_section/heading/inline_code/code_block/regex), metadata |
 | `chunks` | Text chunks with token estimates — used by search and context packing |
 | `chunks_fts` | FTS5 full-text index for fast keyword search |
-| `chunk_vectors` | Optional local semantic vectors (128-dim by default) |
+| `chunk_vectors` | Optional local semantic vectors stored as compact Float32 BLOB rows (128-dim by default) |
 
 ### Edge Kinds
 
@@ -493,7 +496,7 @@ On current Node versions, `node:sqlite` may emit an experimental startup warning
 
 ## Current Tradeoffs
 
-- **Semantic vectors are deterministic, not learned** — the built-in `local-hash` provider is a lightweight embedding that supports cosine scoring, but does not match the quality of a dedicated embedding model. Semantic search is entirely optional.
+- **Semantic vectors are deterministic, not learned** — the built-in `local-hash` provider is a lightweight embedding that supports cosine scoring, but does not match the quality of a dedicated embedding model. Semantic search is entirely optional; unsupported providers degrade to FTS5 and graph search, and `semantic status` reports reindex guidance.
 - **Watch mode updates the database** — it indexes once on startup, then incrementally updates on changes. MCP tools open the current state on each call.
 - **Doctor checks are rule-based** — they point maintainers at likely cleanup work and are not a gate on indexing.
 - **Storage diagnostics are a report, not a repair tool** — use `status --storage` to inspect growth signals, then run `index --full` when compaction is needed.

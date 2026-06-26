@@ -12,6 +12,8 @@ export type DocumentKind =
 
 export type TrustTier = "authored" | "generated" | "validated" | "external" | "untrusted";
 
+export type SearchQueryMode = "auto" | "keyword" | "semantic";
+
 export type EntityKind =
   | "symbol"
   | "api_route"
@@ -224,6 +226,13 @@ export interface ChunkVector {
   createdAt: string;
 }
 
+export interface SemanticMatchMetadata {
+  source: "chunk_vector";
+  provider: string;
+  model: string;
+  confidence: number;
+}
+
 export interface GraphRecordSet {
   documents: GraphDocument[];
   sections: GraphSection[];
@@ -241,6 +250,7 @@ export interface SearchResult {
   reason: string;
   content: string;
   matchedEntities: GraphEntity[];
+  semantic?: SemanticMatchMetadata;
 }
 
 export interface TraceStep {

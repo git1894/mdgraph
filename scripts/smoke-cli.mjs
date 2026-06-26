@@ -34,13 +34,29 @@ function runCleanProjectSmoke() {
   assertEqual(storageStatus.counts.documents, 3, "status --storage should include graph counts");
   assert(storageStatus.storage.database.pageSize > 0, "status --storage should include database page size");
   assert(storageStatus.storage.edgeKinds.length > 0, "status --storage should include edge kind distribution");
+  assertEqual(storageStatus.storage.vectors.format, "float32_blob", "status --storage should report compact vector storage format");
+
+  const semanticDisabled = runCliJson(root, ["semantic", "status", "--json"]);
+  assertEqual(semanticDisabled.state, "disabled", "semantic status should report disabled before semantic indexing");
+
+  const semanticIndex = runCliJson(root, ["index", "--full", "--semantic", "--json"]);
+  assertEqual(semanticIndex.counts.vectors, semanticIndex.counts.chunks, "semantic index should build one vector per chunk");
+
+  const semanticStatus = runCliJson(root, ["semantic", "status", "--json"]);
+  assertEqual(semanticStatus.state, "ready", "semantic status should report ready when matching vectors exist");
+  assertEqual(semanticStatus.vectorStorageFormat, "float32_blob", "semantic status should report Float32 BLOB vector storage");
 
   const search = runCliJson(root, ["search", "AuthService", "--limit", "3", "--json"]);
   assert(search.some((item) => item.document?.path === "docs/auth-v2-design.md"), "search should find auth design");
 
+  const semanticSearch = runCliJson(root, ["search", "session refresh RedisTimeoutError", "--semantic", "--json"]);
+  assert(semanticSearch.some((item) => item.semantic?.provider === "local-hash"), "semantic search JSON should expose provider metadata");
+
   const searchExplain = runCliJson(root, ["search", "AuthService", "--limit", "3", "--explain", "--json"]);
   assert(searchExplain.ftsQuery.includes("authservice*"), "search --explain should include the FTS query");
   assert(searchExplain.matchedEntities.some((item) => item.name === "AuthService"), "search --explain should include matched entities");
+  assertEqual(searchExplain.ranking.fusion, "rrf", "search --explain should report RRF fusion");
+  assert(searchExplain.results.every((item) => item.reason.includes("RRF fusion")), "search results should explain RRF ranking");
 
   const context = runCliJson(root, ["context", "RedisTimeoutError login", "--json"]);
   assert(context.items.some((item) => item.path === "docs/login-flow.md"), "context should include login flow");
@@ -49,6 +65,7 @@ function runCleanProjectSmoke() {
   const contextDebug = runCliJson(root, ["context", "RedisTimeoutError login", "--debug", "--json"]);
   assert(contextDebug.debug.visitedNodes > 0, "context --debug should include visited node count");
   assert(contextDebug.debug.candidateCount >= contextDebug.items.length, "context --debug should include candidate count");
+  assertEqual(contextDebug.debug.packingStrategy, "mmr-style-document-round-robin", "context --debug should report MMR-style packing");
 
   const node = runCliJson(root, ["node", "AuthService", "--json"]);
   assertEqual(node.kind, "entity", "node should resolve AuthService as an entity");

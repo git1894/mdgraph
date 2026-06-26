@@ -349,8 +349,12 @@ describe("regression coverage", () => {
       expect(explanation.ftsQuery).toContain("authservice*");
       expect(explanation.entityCandidates).toContain("AuthService");
       expect(explanation.matchedEntities.map((entity) => entity.name)).toContain("AuthService");
+      expect(explanation.queryMode).toBe("auto");
+      expect(explanation.ranking.fusion).toBe("rrf");
+      expect(explanation.ranking.channels).toEqual(expect.arrayContaining(["definition", "fts"]));
       expect(explanation.results.map((result) => result.document.path)).toEqual(results.map((result) => result.document.path));
       expect(explanation.results.every((result) => result.reason.length > 0)).toBe(true);
+      expect(explanation.results.every((result) => result.reason.includes("RRF fusion"))).toBe(true);
     } finally {
       repository.close();
     }
@@ -471,6 +475,7 @@ describe("regression coverage", () => {
 
       expect(authResult?.reason).toContain("definition");
       expect(authResult?.reason).toContain("FTS5 content match");
+      expect(authResult?.reason).toContain("RRF fusion");
     } finally {
       repository.close();
     }

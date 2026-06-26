@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS chunk_vectors (
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
   dimensions INTEGER NOT NULL,
-  vector_json TEXT NOT NULL,
+  vector_blob BLOB NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY(chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
 );

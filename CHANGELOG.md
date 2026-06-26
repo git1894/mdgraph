@@ -4,6 +4,17 @@ All notable changes to MDGraph will be documented in this file.
 
 This project follows the spirit of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses semantic versioning for public releases once the API surface is stable.
 
+## Unreleased
+
+## 0.5.0 - 2026-06-26
+
+### Added
+
+- Added a `cjk` retrieval evaluation query set with Chinese/Japanese fixture coverage plus lightweight CJK n-gram FTS preprocessing.
+- Added explainable RRF search fusion, MMR-style context-packing diagnostics, `eval --query-mode`, and ranking/reranking evaluation metadata.
+- Added `mdgraph semantic status` for provider support, vector coverage, storage format, and reindex guidance.
+- Migrated semantic vectors from JSON arrays to compact Float32 BLOB storage and exposed semantic result provider/model/confidence metadata.
+
 ## 0.4.0 - 2026-06-25
 
 ### Added

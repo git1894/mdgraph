@@ -1,10 +1,10 @@
 import { performance } from "node:perf_hooks";
-import type { EdgeKind, SearchResult } from "../types.js";
+import type { EdgeKind, SearchQueryMode, SearchResult } from "../types.js";
 import type { GraphRepository } from "../db/repositories.js";
 import type { MDGraphConfig } from "../types.js";
 import type { ContextResult } from "../query/context-builder.js";
-import { buildContext } from "../query/context-builder.js";
-import { searchGraph } from "../query/search.js";
+import { CONTEXT_PACKING_STRATEGY, buildContext } from "../query/context-builder.js";
+import { explainSearchGraph } from "../query/search.js";
 import { traceNodes, type TraceResult } from "../query/trace.js";
 import { slugifyHeading } from "../utils/text.js";
 
@@ -50,6 +50,8 @@ export interface EvaluationMetrics {
     skippedByDepth: number;
   };
   reasonCoverage: boolean;
+  rankingReasonCoverage: boolean;
+  contextDiversity: number;
 }
 
 export interface EvaluationCaseResult {
@@ -65,6 +67,14 @@ export interface EvaluationCaseResult {
     resolvedSourceRefs: string[];
     edgeKinds: EdgeKind[];
     trace?: TraceResult;
+    ranking: {
+      queryMode: SearchQueryMode;
+      searchFusion: "rrf";
+      searchChannels: string[];
+      semanticActive: boolean;
+      optionalReranker: "none" | "local-hash";
+      contextPackingStrategy: typeof CONTEXT_PACKING_STRATEGY;
+    };
   };
   metrics: EvaluationMetrics;
 }
@@ -76,19 +86,32 @@ export interface EvaluationSummary {
   averageTopKDocumentRecall: number;
   averageExpectedSectionRecall: number;
   averageContextPrecision: number;
+  averageContextDiversity: number;
   averageLatencyMs: number;
   averageReturnedChars: number;
+}
+
+export interface EvaluationRankingReport {
+  queryMode: SearchQueryMode;
+  searchFusion: "rrf";
+  contextPackingStrategy: typeof CONTEXT_PACKING_STRATEGY;
+  optionalReranker: "none" | "local-hash";
+  semanticActiveCases: number;
+  searchChannels: string[];
+  rankingReasonCoverage: boolean;
+  averageContextDiversity: number;
 }
 
 export interface EvaluationReport {
   querySet: string;
   limit: number;
+  ranking: EvaluationRankingReport;
   generatedAt: string;
   summary: EvaluationSummary;
   cases: EvaluationCaseResult[];
 }
 
-export const EVALUATION_QUERY_SET_NAMES = ["alpha", "ecc"] as const;
+export const EVALUATION_QUERY_SET_NAMES = ["alpha", "ecc", "cjk"] as const;
 export type EvaluationQuerySet = typeof EVALUATION_QUERY_SET_NAMES[number];
 
 export const ALPHA_EVALUATION_CASES: EvaluationCase[] = [
@@ -279,12 +302,82 @@ export const ECC_EVALUATION_CASES: EvaluationCase[] = [
   )
 ];
 
+export const CJK_EVALUATION_CASES: EvaluationCase[] = [
+  {
+    id: "cjk-1",
+    query: "登录流程 缓存超时 认证重试",
+    expectedDocuments: ["docs/zh/login-flow.md", "docs/zh/cache-timeout-design.md", "docs/zh/runbooks/auth-retry-runbook.md"],
+    expectedSections: [
+      { path: "docs/zh/login-flow.md", heading: "登录流程" },
+      { path: "docs/zh/cache-timeout-design.md", heading: "缓存超时处理" },
+      { path: "docs/zh/runbooks/auth-retry-runbook.md", heading: "认证重试运行手册" }
+    ],
+    expectedEntities: ["Redis缓存超时"],
+    expectedEdges: ["DEPENDS_ON", "LINKS_TO"],
+    expectedSourceRefs: ["src/cache/redis.ts", "scripts/restart-auth.ps1"],
+    trace: { from: "登录流程", to: "缓存超时策略", depth: 6, edgeKinds: ["DEPENDS_ON"] }
+  },
+  {
+    id: "cjk-2",
+    query: "缓存超时影响登录流程的处理",
+    expectedDocuments: ["docs/zh/cache-timeout-design.md", "docs/zh/login-flow.md", "docs/zh/runbooks/auth-retry-runbook.md"],
+    expectedSections: [
+      { path: "docs/zh/cache-timeout-design.md", heading: "缓存超时处理" },
+      { path: "docs/zh/login-flow.md", heading: "登录流程" },
+      { path: "docs/zh/runbooks/auth-retry-runbook.md", heading: "认证重试运行手册" }
+    ],
+    expectedEntities: ["Redis缓存超时"],
+    expectedEdges: ["DEPENDS_ON"],
+    expectedSourceRefs: ["src/cache/redis.ts"],
+    trace: { from: "登录流程", to: "缓存超时策略", depth: 6, edgeKinds: ["DEPENDS_ON"] }
+  },
+  {
+    id: "cjk-3",
+    query: "AUTH_RETRY_LIMIT 会影响哪些认证运行手册",
+    expectedDocuments: ["docs/zh/runbooks/auth-retry-runbook.md", "docs/zh/cache-timeout-design.md", "docs/zh/login-flow.md"],
+    expectedSections: [
+      { path: "docs/zh/runbooks/auth-retry-runbook.md", heading: "认证重试运行手册" },
+      { path: "docs/zh/cache-timeout-design.md", heading: "缓存超时处理" },
+      { path: "docs/zh/login-flow.md", heading: "登录流程" }
+    ],
+    expectedEntities: ["AUTH_RETRY_LIMIT"],
+    expectedEdges: ["REFERENCES", "DEPENDS_ON"],
+    expectedSourceRefs: ["scripts/restart-auth.ps1"],
+    trace: { from: "AUTH_RETRY_LIMIT", to: "登录流程", depth: 6, edgeKinds: ["DEPENDS_ON"] }
+  },
+  {
+    id: "cjk-4",
+    query: "POST /api/zh/login 登录接口 源码",
+    expectedDocuments: ["docs/zh/api/login-api.md", "docs/zh/login-flow.md"],
+    expectedSections: [
+      { path: "docs/zh/api/login-api.md", heading: "登录接口" },
+      { path: "docs/zh/login-flow.md", heading: "登录流程" }
+    ],
+    expectedEntities: ["POST /api/zh/login"],
+    expectedEdges: ["IMPLEMENTS", "DEPENDS_ON"],
+    expectedSourceRefs: ["src/routes/auth.ts"],
+    trace: { from: "POST /api/zh/login", to: "src/routes/auth.ts", depth: 4, edgeKinds: ["IMPLEMENTS"] }
+  },
+  {
+    id: "cjk-5",
+    query: "決済 リスク RiskCheckService 実装",
+    expectedDocuments: ["docs/ja/payment-risk.md"],
+    expectedSections: [{ path: "docs/ja/payment-risk.md", heading: "決済リスク設計" }],
+    expectedEntities: ["RiskCheckService"],
+    expectedEdges: ["IMPLEMENTS", "DEFINES"],
+    expectedSourceRefs: ["src/payment/risk.ts"],
+    trace: { from: "RiskCheckService", to: "src/payment/risk.ts", depth: 4, edgeKinds: ["IMPLEMENTS"] }
+  }
+];
+
 export function evaluationCasesForQuerySet(querySet: string): EvaluationCase[] {
   switch (querySet) {
     case "alpha":
       return ALPHA_EVALUATION_CASES;
     case "ecc":
       return ECC_EVALUATION_CASES;
+    case "cjk":
+      return CJK_EVALUATION_CASES;
     default:
       throw new Error(`Unknown evaluation query set: ${querySet}. Expected one of: ${EVALUATION_QUERY_SET_NAMES.join(", ")}.`);
   }
@@ -293,15 +386,17 @@ export function evaluationCasesForQuerySet(querySet: string): EvaluationCase[] {
 export function evaluateRetrieval(
   repository: GraphRepository,
   config: MDGraphConfig,
-  options: { cases?: EvaluationCase[]; limit?: number; querySet?: string } = {}
+  options: { cases?: EvaluationCase[]; limit?: number; querySet?: string; queryMode?: SearchQueryMode } = {}
 ): EvaluationReport {
   const querySet = options.querySet ?? "alpha";
+  const queryMode = options.queryMode ?? "auto";
   const cases = options.cases ?? evaluationCasesForQuerySet(querySet);
   const limit = options.limit ?? config.search.defaultLimit;
-  const results = cases.map((evaluationCase) => evaluateCase(repository, config, evaluationCase, limit));
+  const results = cases.map((evaluationCase) => evaluateCase(repository, config, evaluationCase, limit, queryMode));
   return {
     querySet,
     limit,
+    ranking: summarizeRanking(results, queryMode),
     generatedAt: new Date().toISOString(),
     summary: summarize(results),
     cases: results
@@ -324,11 +419,13 @@ function evaluateCase(
   repository: GraphRepository,
   config: MDGraphConfig,
   evaluationCase: EvaluationCase,
-  limit: number
+  limit: number,
+  queryMode: SearchQueryMode
 ): EvaluationCaseResult {
   const start = performance.now();
-  const searchResults = searchGraph(repository, config, evaluationCase.query, limit);
-  const context = buildContext(repository, config, evaluationCase.query, { debug: true });
+  const searchExplanation = explainSearchGraph(repository, config, evaluationCase.query, limit, { queryMode });
+  const searchResults = searchExplanation.results;
+  const context = buildContext(repository, config, evaluationCase.query, { debug: true, searchOptions: { queryMode } });
   const trace = evaluationCase.trace
     ? traceNodes(repository, evaluationCase.trace.from, evaluationCase.trace.to, evaluationCase.trace.depth ?? config.search.maxDepth)
     : undefined;
@@ -369,7 +466,15 @@ function evaluateCase(
       resolvedEntities,
       resolvedSourceRefs,
       edgeKinds,
-      trace
+      trace,
+      ranking: {
+        queryMode,
+        searchFusion: searchExplanation.ranking.fusion,
+        searchChannels: searchExplanation.ranking.channels,
+        semanticActive: searchExplanation.semanticActive,
+        optionalReranker: searchExplanation.ranking.optionalReranker,
+        contextPackingStrategy: context.debug?.packingStrategy ?? CONTEXT_PACKING_STRATEGY
+      }
     },
     metrics
   };
@@ -411,7 +516,9 @@ function calculateMetrics(input: {
       skippedByNodeLimit: input.context.debug?.skippedByNodeLimit ?? 0,
       skippedByDepth: input.context.debug?.skippedByDepth ?? 0
     },
-    reasonCoverage: input.searchResults.every((result) => result.reason.length > 0) && input.context.items.every((item) => item.reason.length > 0)
+    reasonCoverage: input.searchResults.every((result) => result.reason.length > 0) && input.context.items.every((item) => item.reason.length > 0),
+    rankingReasonCoverage: input.searchResults.every((result) => result.reason.includes("RRF fusion")),
+    contextDiversity: input.context.debug?.packingDiversityRatio ?? 0
   };
 }
 
@@ -424,8 +531,25 @@ function summarize(results: EvaluationCaseResult[]): EvaluationSummary {
     averageTopKDocumentRecall: average(results.map((result) => result.metrics.topKDocumentRecall), count),
     averageExpectedSectionRecall: average(results.map((result) => result.metrics.expectedSectionRecall), count),
     averageContextPrecision: average(results.map((result) => result.metrics.contextPrecision), count),
+    averageContextDiversity: average(results.map((result) => result.metrics.contextDiversity), count),
     averageLatencyMs: average(results.map((result) => result.metrics.latencyMs), count),
     averageReturnedChars: average(results.map((result) => result.metrics.returnedChars), count)
+  };
+}
+
+function summarizeRanking(results: EvaluationCaseResult[], queryMode: SearchQueryMode): EvaluationRankingReport {
+  const count = results.length || 1;
+  const rerankers = results.map((result) => result.observed.ranking.optionalReranker);
+  const channels = results.flatMap((result) => result.observed.ranking.searchChannels);
+  return {
+    queryMode,
+    searchFusion: "rrf",
+    contextPackingStrategy: CONTEXT_PACKING_STRATEGY,
+    optionalReranker: rerankers.includes("local-hash") ? "local-hash" : "none",
+    semanticActiveCases: results.filter((result) => result.observed.ranking.semanticActive).length,
+    searchChannels: [...new Set(channels)].sort(),
+    rankingReasonCoverage: results.every((result) => result.metrics.rankingReasonCoverage),
+    averageContextDiversity: average(results.map((result) => result.metrics.contextDiversity), count)
   };
 }
 
@@ -437,6 +561,7 @@ function casePassed(metrics: EvaluationMetrics): boolean {
     && metrics.edgeKindCoverage === 1
     && metrics.budgetFit
     && metrics.reasonCoverage
+    && metrics.rankingReasonCoverage
     && metrics.traceSuccess !== false;
 }
 

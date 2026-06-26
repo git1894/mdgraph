@@ -28,7 +28,7 @@ If no index exists, it returns:
 - `storage.pathGroups`: document and chunk content contribution grouped by top-level path.
 - `storage.edgeKinds`: edge count and average score data by edge kind.
 - `storage.highDegreeNodes`: highest non-containment graph degree nodes.
-- `storage.vectors`: total vector count and provider/model/dimension breakdown.
+- `storage.vectors`: `total`, compact storage `format`, and provider/model/dimension breakdown.
 
 ## `search --json`
 
@@ -40,10 +40,12 @@ If no index exists, it returns:
 - `reason`: explanation for why the result matched.
 - `content`: selected chunk or section content.
 - `matchedEntities`: graph entity records that contributed to the match.
+- `semantic`: optional semantic match metadata with `source`, `provider`, `model`, and `confidence`.
 
 `mdgraph search <query> --explain --json` returns:
 
-- `query`, `limit`, `entityCandidates`, `ftsQuery`, and `semanticEnabled`.
+- `query`, `limit`, `queryMode`, `entityCandidates`, `ftsQuery`, `semanticEnabled`, and `semanticActive`.
+- `ranking`: `fusion`, `fusionK`, `channels`, and `optionalReranker`.
 - `matchedEntities`: entity names, kinds, and document frequencies used by ranking diagnostics.
 - `results`: the same search result records returned by `search --json`.
 
@@ -61,6 +63,7 @@ If no index exists, it returns:
 - `seedNodes`, `visitedNodes`, and `expandedEdges`.
 - `skippedVisitedNodes`, `skippedByNodeLimit`, and `skippedByDepth`.
 - `candidateCount`, `directCandidates`, and `expandedCandidates`.
+- `packingStrategy`, `packedItems`, `packedUniqueDocuments`, and `packingDiversityRatio`.
 - `budgetTruncatedItems` and `budgetSkippedItems`.
 
 ## `node --json`
@@ -88,15 +91,26 @@ When no node is found, it returns:
 
 `mdgraph eval --json` runs the built-in alpha retrieval evaluation cases against an indexed project and returns:
 
-- `querySet`: `alpha` by default, or `ecc` when `--query-set ecc` is provided.
+- `querySet`: `alpha` by default, `ecc` when `--query-set ecc` is provided, or `cjk` when `--query-set cjk` is provided.
 - `limit`: search result limit used per case.
+- `ranking`: query mode, RRF search fusion, context packing strategy, optional reranker status, semantic-active case count, search channels, ranking reason coverage, and average context diversity.
 - `generatedAt`: ISO timestamp for the evaluation run.
-- `summary`: `cases`, `passed`, `failed`, `averageTopKDocumentRecall`, `averageExpectedSectionRecall`, `averageContextPrecision`, `averageLatencyMs`, and `averageReturnedChars`.
+- `summary`: `cases`, `passed`, `failed`, `averageTopKDocumentRecall`, `averageExpectedSectionRecall`, `averageContextPrecision`, `averageContextDiversity`, `averageLatencyMs`, and `averageReturnedChars`.
 - `cases`: per-case results with `id`, `query`, `passed`, `expected`, `observed`, and `metrics`.
 
-Per-case `expected` includes expected documents, sections, entities, edge kinds, and source refs. Per-case `observed` includes ranked search document paths, context item paths/headings/reasons, matched entities, resolved entities, resolved source refs, observed edge kinds, and optional trace results. Per-case `metrics` includes top-K document recall, expected-section recall, context precision, entity recall, source-ref recall, edge-kind coverage, trace success, latency, returned characters, budget fit, fanout, and reason coverage.
+Per-case `expected` includes expected documents, sections, entities, edge kinds, and source refs. Per-case `observed` includes ranked search document paths, context item paths/headings/reasons, matched entities, resolved entities, resolved source refs, observed edge kinds, optional trace results, and ranking diagnostics. Per-case `metrics` includes top-K document recall, expected-section recall, context precision, entity recall, source-ref recall, edge-kind coverage, trace success, latency, returned characters, budget fit, fanout, reason coverage, ranking reason coverage, and context diversity.
 
-`mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project. `mdgraph eval --query-set ecc --path <project> --json` uses ECC-style path-only expected records so an external workflow corpus can be scored without copying its document content into MDGraph fixtures.
+`mdgraph eval --path <project> --json` evaluates an explicit local project path. It does not add MCP tools and does not index automatically; run `mdgraph index` first for the target project. `mdgraph eval --query-set ecc --path <project> --json` uses ECC-style path-only expected records so an external workflow corpus can be scored without copying its document content into MDGraph fixtures. `mdgraph eval --query-set cjk --path <project> --json` uses Chinese/Japanese expected records to measure CJK retrieval quality with the lightweight CJK n-gram preprocessing baseline. `mdgraph eval --query-mode semantic --json` requests optional semantic search and reports whether the local semantic reranker was active.
+
+## `semantic status --json`
+
+`mdgraph semantic status --json` returns:
+
+- `projectRoot`.
+- `state`: `disabled`, `not_indexed`, `ready`, `unsupported_provider`, or `needs_reindex`.
+- `enabled`, `provider`, `model`, `dimensions`, and `providerSupported` for the configured embedding provider.
+- `indexed`, `chunks`, `vectors`, `vectorStorageFormat`, and `indexedProviders`.
+- `guidance`: actionable next steps such as running `mdgraph index --semantic`, re-embedding after provider changes, or falling back to FTS5 and graph search for unsupported providers.
 
 ## `doctor --json`
 

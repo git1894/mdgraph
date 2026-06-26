@@ -2,7 +2,7 @@ export { DEFAULT_CONFIG, configPath, databasePath, initConfig, loadConfig } from
 export { runDoctor, formatDoctorReport } from "./analysis/doctor.js";
 export { openDatabase } from "./db/connection.js";
 export { GraphRepository } from "./db/repositories.js";
-export { ALPHA_EVALUATION_CASES, ECC_EVALUATION_CASES, EVALUATION_QUERY_SET_NAMES, evaluateRetrieval, evaluationCasesForQuerySet } from "./evaluation/retrieval-eval.js";
+export { ALPHA_EVALUATION_CASES, CJK_EVALUATION_CASES, ECC_EVALUATION_CASES, EVALUATION_QUERY_SET_NAMES, evaluateRetrieval, evaluationCasesForQuerySet } from "./evaluation/retrieval-eval.js";
 export { buildGraphRecords } from "./extraction/graph-builder.js";
 export { extractEntities } from "./extraction/entity-extractor.js";
 export { indexProject } from "./indexer.js";
@@ -14,5 +14,7 @@ export { explainSearchGraph, searchGraph } from "./query/search.js";
 export { traceNodes } from "./query/trace.js";
 export { scanMarkdownFiles } from "./scanner/file-scanner.js";
 export { embedTextLocal } from "./semantic/local-embedding.js";
+export { semanticStatusReport } from "./semantic/status.js";
+export { decodeFloat32Vector, encodeFloat32Vector } from "./semantic/vector-codec.js";
 export { watchProject } from "./watcher/file-watcher.js";
 export * from "./types.js";

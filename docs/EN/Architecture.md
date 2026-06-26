@@ -6,7 +6,7 @@ MDGraph uses this implemented pipeline: scanner -> parser -> extractor/resolver 
 
 | Area | Path | Responsibility |
 |---|---|---|
-| CLI | `src/bin/mdgraph.ts` | Commands for init, index, status, search, context, node, trace, serve, watch, and doctor; doctor supports `--strict`, `--fail-on`, `--changed`, and `--since`. |
+| CLI | `src/bin/mdgraph.ts` | Commands for init, index, status, search, context, node, trace, eval, semantic status, serve, watch, and doctor; doctor supports `--strict`, `--fail-on`, `--changed`, and `--since`. |
 | Config | `src/config/load-config.ts` | Default config, `.mdgraph/config.json` creation, and safe config merging. |
 | Scanner | `src/scanner/file-scanner.ts` | Finds Markdown files using include/exclude globs and max file size limits. |
 | Parser | `src/parser/*` | Front matter, Markdown AST, headings, code blocks, inline code, Markdown links, and WikiLinks. |
@@ -15,7 +15,7 @@ MDGraph uses this implemented pipeline: scanner -> parser -> extractor/resolver 
 | Storage | `src/db/*` | SQLite connection, schema, record replacement, incremental updates, graph queries, and storage diagnostics. |
 | Query | `src/query/*` | Search ranking, context packing, and graph trace. |
 | Evaluation | `src/evaluation/*` | Retrieval evaluation cases, expected records, and lightweight metrics for search/context/trace quality. |
-| Semantic | `src/semantic/local-embedding.ts` | Deterministic local vector generation and cosine scoring. |
+| Semantic | `src/semantic/*` | Deterministic local vector generation, Float32 vector codec, provider status, and cosine scoring. |
 | MCP | `src/mcp/*` | Newline-delimited JSON-RPC MCP server and tool handlers. |
 | Watch | `src/watcher/file-watcher.ts` | Debounced incremental reindexing via chokidar. |
 | Analysis | `src/analysis/doctor.ts` | Documentation health and governance report. |
@@ -32,8 +32,8 @@ Primary records:
 - `source_refs`: source/config/script paths referenced by documents.
 - `edges`: graph relationships with kind, confidence, weight, provenance, and metadata.
 - `chunks`: text chunks derived from section content and used by search and context packing.
-- `chunks_fts`: external-content FTS5 index for keyword search, keyed by `chunks.rowid` so the source chunk text is not stored a second time inside FTS shadow content tables.
-- `chunk_vectors`: optional local semantic vectors keyed by chunk.
+- `chunks_fts`: external-content FTS5 index for keyword search, keyed by `chunks.rowid` so the source chunk text is not stored a second time inside FTS shadow content tables. CJK text is augmented with lightweight n-gram tokens only in the FTS index content.
+- `chunk_vectors`: optional local semantic vectors keyed by chunk and stored as Float32 BLOB rows.
 
 ## Indexing Flow
 
@@ -47,7 +47,7 @@ Incremental mode deletes document-derived records for changed and removed files,
 
 ## Storage Diagnostics
 
-`GraphRepository.storageDiagnostics` powers `mdgraph status --storage` and the storage portion of `mdgraph doctor`. It reports SQLite page counts, freelist state, journal/WAL checkpoint state, table/index/FTS shadow object sizes when `dbstat` is available, path-group content contribution, edge-kind distribution, high-degree nodes, and vector provider counts.
+`GraphRepository.storageDiagnostics` powers `mdgraph status --storage` and the storage portion of `mdgraph doctor`. It reports SQLite page counts, freelist state, journal/WAL checkpoint state, table/index/FTS shadow object sizes when `dbstat` is available, path-group content contribution, edge-kind distribution, high-degree nodes, vector storage format, and vector provider counts.
 
 The full storage report is read-oriented observability. `doctor` promotes only a small actionable subset into storage health warnings; it does not create graph edges from storage facts. When storage growth is unexpected, users should first check include/exclude globs and generated/dependency/temp directories, then run `mdgraph index --full` when they need a rebuild plus `VACUUM` compaction.
 
@@ -55,20 +55,20 @@ The full storage report is read-oriented observability. `doctor` promotes only a
 
 `searchGraph` combines and deduplicates:
 
-- FTS5 chunk hits.
+- FTS5 chunk hits, including lightweight CJK n-gram matches for continuous Chinese/Japanese/Korean text.
 - Exact entity matches.
 - Optional local semantic vector matches.
 - Graph neighbors around matching entities.
 
-When the same document or section is reached by multiple paths, search keeps the highest score while merging the main reasons and matched entities so provenance is not lost.
+When the same document or section is reached by multiple paths, search applies reciprocal rank fusion (RRF) across definition, FTS, and optional semantic channels, then keeps the highest base score while merging the main reasons and matched entities so provenance is not lost. Each fused result keeps an explainable `RRF fusion (...)` reason.
 
 `buildContext` then starts from ranked search sections, performs bounded graph expansion through non-containment edges, orders candidates to preserve cross-document diversity before repeating sections from one document, packages selected sections under a character budget, and includes reasons such as FTS hit, semantic hit, exact entity match, or the graph edge traversal path.
 
-When requested through `context --debug`, context building also reports seed nodes, visited nodes, expanded edges, skipped expansion reasons, candidate counts, and budget truncation counts. These diagnostics are not graph facts; they exist to explain context packing and evaluate retrieval quality.
+When requested through `context --debug`, context building also reports seed nodes, visited nodes, expanded edges, skipped expansion reasons, candidate counts, MMR-style document-diverse packing diagnostics, and budget truncation counts. These diagnostics are not graph facts; they exist to explain context packing and evaluate retrieval quality.
 
 `traceNodes` performs bounded graph traversal between resolved nodes and returns each step with edge kind, provenance, and confidence.
 
-`evaluateRetrieval` runs the built-in alpha evaluation cases against an indexed project. It reuses `searchGraph`, `buildContext`, and `traceNodes`, then reports expected-document recall, expected-section recall, context precision, trace success, latency, returned character budget, and reason coverage. The evaluation output is a measurement aid, not a learned ranking model and not a replacement for focused regression tests.
+`evaluateRetrieval` runs the built-in alpha, ECC path-only, or CJK evaluation cases against an indexed project. It reuses `searchGraph`, `buildContext`, and `traceNodes`, then reports expected-document recall, expected-section recall, context precision, trace success, latency, returned character budget, context diversity, reason coverage, RRF channels, query mode, and optional semantic reranker status. The evaluation output is a measurement aid, not a learned ranking model and not a replacement for focused regression tests.
 
 ## MCP Boundary
 
@@ -76,7 +76,7 @@ The MCP server intentionally exposes only five tools. Tool output is text-first 
 
 ## Current Tradeoffs
 
-- The semantic provider is deterministic and local, but it is a lightweight hash embedding rather than a high-quality language model embedding.
+- The semantic provider is deterministic and local, but it is a lightweight hash embedding rather than a high-quality language model embedding. Unsupported configured providers degrade to FTS5 and graph search; `semantic status` reports provider support, vector coverage, storage format, and reindex guidance.
 - Watch mode updates SQLite on file changes; long-running MCP freshness is achieved by tools opening current database state on each call.
 - Doctor checks are rule-based warnings. They first compare current files with indexed document hashes and IDs; stale indexes produce a read-only freshness diagnostic instead of mixed-time health conclusions.
 - `doctor --changed` and `doctor --since <ref>` are Git-scoped views over the same health model; they report scope metadata, scoped graph issues, directly related one-hop graph documents, deleted-document warnings, and freshness diagnostics.

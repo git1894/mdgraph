@@ -11,6 +11,8 @@ import type {
   Provenance,
   SourceRef
 } from "../types.js";
+import { decodeFloat32Vector, encodeFloat32Vector } from "../semantic/vector-codec.js";
+import { ftsIndexContent } from "../utils/fts.js";
 import { normalizePath, slugifyHeading } from "../utils/text.js";
 
 export interface StatusCounts {
@@ -77,6 +79,7 @@ export interface StorageDiagnostics {
   highDegreeNodes: HighDegreeNodeStat[];
   vectors: {
     total: number;
+    format: "float32_blob" | "legacy_json" | "unknown";
     providers: VectorStorageStat[];
   };
 }
@@ -196,6 +199,7 @@ export class GraphRepository {
       highDegreeNodes: highDegreeNodeStats(this.db, (id) => this.getNode(id)),
       vectors: {
         total: tableCount(this.db, "chunk_vectors"),
+        format: vectorStorageFormat(this.db),
         providers
       }
     };
@@ -327,7 +331,7 @@ export class GraphRepository {
         s.level AS s_level, s.start_line AS s_start_line, s.end_line AS s_end_line, s.content AS s_content,
         c.id AS c_id, c.document_id AS c_document_id, c.section_id AS c_section_id, c.content AS c_content,
         c.token_estimate AS c_token_estimate, c.metadata_json AS c_metadata_json,
-        v.vector_json AS vector_json
+        v.vector_blob AS vector_blob
       FROM chunk_vectors v
       JOIN chunks c ON c.id = v.chunk_id
       JOIN documents d ON d.id = c.document_id
@@ -341,7 +345,7 @@ export class GraphRepository {
         section: row.s_id ? rowToSection(row, "s_") : undefined,
         chunk: rowToChunk(row, "c_"),
         rank: 0,
-        similarity: cosine(queryVector, parseVector(row.vector_json))
+        similarity: cosine(queryVector, decodeFloat32Vector(row.vector_blob))
       }))
       .filter((row) => row.similarity > 0)
       .sort((a, b) => b.similarity - a.similarity)
@@ -722,7 +726,7 @@ export class GraphRepository {
       });
       insertFts.run({
         rowid: result.lastInsertRowid,
-        content: chunk.content
+        content: ftsIndexContent(chunk.content)
       });
     }
     for (const vector of records.vectors) {
@@ -732,8 +736,8 @@ export class GraphRepository {
 
   private prepareInsertVector() {
     return this.db.prepare(`
-      INSERT INTO chunk_vectors (chunk_id, provider, model, dimensions, vector_json, created_at)
-      VALUES (@chunkId, @provider, @model, @dimensions, @vectorJson, @createdAt)
+      INSERT INTO chunk_vectors (chunk_id, provider, model, dimensions, vector_blob, created_at)
+      VALUES (@chunkId, @provider, @model, @dimensions, @vectorBlob, @createdAt)
     `);
   }
 
@@ -741,7 +745,7 @@ export class GraphRepository {
     const chunkRows = this.db.prepare("SELECT rowid, content FROM chunks WHERE document_id = ?").all(documentId) as Array<{ rowid: number | bigint; content: string }>;
     const deleteFts = this.db.prepare("INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES (@operation, @rowid, @content)");
     for (const row of chunkRows) {
-      deleteFts.run({ operation: "delete", rowid: row.rowid, content: row.content });
+      deleteFts.run({ operation: "delete", rowid: row.rowid, content: ftsIndexContent(row.content) });
     }
 
     const nodeRows = this.db.prepare(`
@@ -927,6 +931,17 @@ function vectorStorageStats(db: SqliteDatabase): VectorStorageStat[] {
   }));
 }
 
+function vectorStorageFormat(db: SqliteDatabase): StorageDiagnostics["vectors"]["format"] {
+  const columns = new Set((db.prepare("PRAGMA table_info(chunk_vectors)").all() as Array<{ name: string }>).map((row) => row.name));
+  if (columns.has("vector_blob")) {
+    return "float32_blob";
+  }
+  if (columns.has("vector_json")) {
+    return "legacy_json";
+  }
+  return "unknown";
+}
+
 function walCheckpointStats(db: SqliteDatabase): StorageDiagnostics["database"]["walCheckpoint"] {
   try {
     const row = db.pragma("wal_checkpoint(PASSIVE)") as Record<string, unknown> | undefined;
@@ -1076,17 +1091,9 @@ function vectorToParams(vector: ChunkVector): Record<string, unknown> {
     provider: vector.provider,
     model: vector.model,
     dimensions: vector.dimensions,
-    vectorJson: JSON.stringify(vector.vector),
+    vectorBlob: encodeFloat32Vector(vector.vector),
     createdAt: vector.createdAt
   };
-}
-
-function parseVector(value: unknown): number[] {
-  if (typeof value !== "string") {
-    return [];
-  }
-  const parsed = JSON.parse(value) as unknown;
-  return Array.isArray(parsed) ? parsed.filter((item): item is number => typeof item === "number") : [];
 }
 
 function cosine(left: number[], right: number[]): number {

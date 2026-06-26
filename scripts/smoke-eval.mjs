@@ -10,15 +10,20 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-eval-smoke-"));
 try {
   assertFile(cliPath, "Run `npm run build` before `npm run smoke:eval`.");
   writeAlphaDocs(root);
+  writeCjkDocs(root);
   runCli(root, ["index", "--json"]);
   const report = runCliJson(root, ["eval", "--json"]);
 
   assertEqual(report.querySet, "alpha", "eval should use the alpha query set by default");
   assertEqual(report.summary.cases, 10, "eval should run the alpha evaluation cases");
+  assertEqual(report.ranking?.searchFusion, "rrf", "eval should report RRF search fusion");
+  assertEqual(report.ranking?.contextPackingStrategy, "mmr-style-document-round-robin", "eval should report MMR-style packing");
+  assertEqual(report.ranking?.queryMode, "auto", "eval should report the default query mode");
   assert(Array.isArray(report.cases), "eval should return case results");
   assert(report.cases.every((item) => item.metrics?.budgetFit === true), "eval cases should report context budget fit");
   assert(report.cases.every((item) => typeof item.metrics?.latencyMs === "number"), "eval cases should report latency metrics");
   assert(report.cases.every((item) => typeof item.metrics?.fanout?.visitedNodes === "number"), "eval cases should report fanout metrics");
+  assert(report.cases.every((item) => item.metrics?.rankingReasonCoverage === true), "eval cases should report ranking reason coverage");
 
   const eccReport = runCliJson(root, ["eval", "--query-set", "ecc", "--json"]);
   assertEqual(eccReport.querySet, "ecc", "eval should support the ECC query set");
@@ -27,6 +32,19 @@ try {
     eccReport.cases.every((item) => item.expected?.expectedSections?.length === 0),
     "ECC eval smoke should not require copied external sections"
   );
+
+  const cjkReport = runCliJson(root, ["eval", "--query-set", "cjk", "--json"]);
+  assertEqual(cjkReport.querySet, "cjk", "eval should support the CJK query set");
+  assertEqual(cjkReport.ranking?.searchFusion, "rrf", "CJK eval should report RRF search fusion");
+  assertEqual(cjkReport.summary.cases, 5, "CJK eval should run the CJK evaluation cases");
+  const continuousChinese = cjkReport.cases.find((item) => item.id === "cjk-2");
+  assertEqual(continuousChinese?.metrics?.topKDocumentRecall, 1, "CJK eval should recall continuous Chinese query documents");
+  assertEqual(continuousChinese?.metrics?.expectedSectionRecall, 1, "CJK eval should recall continuous Chinese query sections");
+
+  runCli(root, ["index", "--full", "--semantic", "--json"]);
+  const semanticReport = runCliJson(root, ["eval", "--query-mode", "semantic", "--json"]);
+  assertEqual(semanticReport.ranking?.queryMode, "semantic", "eval should support semantic query mode");
+  assertEqual(semanticReport.ranking?.optionalReranker, "local-hash", "semantic eval should report the local optional reranker");
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
 }
@@ -168,7 +186,101 @@ function writeAlphaDocs(projectRoot) {
 }
 
 function writeDoc(filePath, lines) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+}
+
+function writeCjkDocs(projectRoot) {
+  const docsDir = path.join(projectRoot, "docs");
+  const zhDir = path.join(docsDir, "zh");
+  const jaDir = path.join(docsDir, "ja");
+  const srcPaymentDir = path.join(projectRoot, "src", "payment");
+
+  fs.mkdirSync(srcPaymentDir, { recursive: true });
+  fs.writeFileSync(path.join(srcPaymentDir, "risk.ts"), "export class RiskCheckService {}\n", "utf8");
+  fs.writeFileSync(path.join(projectRoot, "src", "routes", "auth.ts"), "export const loginRoute = '/api/zh/login';\n", "utf8");
+
+  writeDoc(path.join(zhDir, "cache-timeout-design.md"), [
+    "---",
+    "id: zh-cache-timeout-design",
+    "title: 缓存超时策略",
+    "type: design",
+    "defines:",
+    "  - 缓存超时策略",
+    "  - Redis缓存超时",
+    "source_refs:",
+    "  - src/cache/redis.ts",
+    "---",
+    "# 缓存超时处理",
+    "",
+    "缓存超时处理说明了 Redis 缓存超时如何影响登录流程。"
+  ]);
+  writeDoc(path.join(zhDir, "login-flow.md"), [
+    "---",
+    "id: zh-login-flow",
+    "title: 登录流程",
+    "type: spec",
+    "defines:",
+    "  - 登录流程",
+    "depends_on:",
+    "  - zh-login-api",
+    "  - zh-cache-timeout-design",
+    "---",
+    "# 登录流程",
+    "",
+    "登录流程会调用 [登录接口](api/login-api.md)，当 Redis缓存超时时进入认证重试运行手册。"
+  ]);
+  writeDoc(path.join(zhDir, "api", "login-api.md"), [
+    "---",
+    "id: zh-login-api",
+    "title: 登录接口",
+    "type: api",
+    "defines:",
+    "  - POST /api/zh/login",
+    "  - 登录接口",
+    "depends_on:",
+    "  - zh-cache-timeout-design",
+    "implements:",
+    "  - src/routes/auth.ts",
+    "---",
+    "# 登录接口",
+    "",
+    "`POST /api/zh/login` 读取 `AuthService` 并在 Redis缓存超时 时返回可重试结果。"
+  ]);
+  writeDoc(path.join(zhDir, "runbooks", "auth-retry-runbook.md"), [
+    "---",
+    "id: zh-auth-retry-runbook",
+    "title: 认证重试运行手册",
+    "type: runbook",
+    "defines:",
+    "  - 认证重试运行手册",
+    "  - AUTH_RETRY_LIMIT",
+    "depends_on:",
+    "  - zh-cache-timeout-design",
+    "  - zh-login-flow",
+    "source_refs:",
+    "  - scripts/restart-auth.ps1",
+    "---",
+    "# 认证重试运行手册",
+    "",
+    "当登录流程遇到 Redis缓存超时时，运维人员会使用认证重试运行手册。",
+    "设置 `AUTH_RETRY_LIMIT` 之前先确认缓存超时策略。"
+  ]);
+  writeDoc(path.join(jaDir, "payment-risk.md"), [
+    "---",
+    "id: ja-payment-risk",
+    "title: 決済リスク設計",
+    "type: design",
+    "defines:",
+    "  - 決済リスク設計",
+    "  - RiskCheckService",
+    "implements:",
+    "  - src/payment/risk.ts",
+    "---",
+    "# 決済リスク設計",
+    "",
+    "決済リスク設計は RiskCheckService で高リスク取引を判定する。"
+  ]);
 }
 
 function runCliJson(cwd, args) {

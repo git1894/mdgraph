@@ -8,9 +8,11 @@ The built-in CLI entry is:
 mdgraph eval --json
 mdgraph eval --path /path/to/project --json
 mdgraph eval --query-set ecc --path /path/to/ecc --json
+mdgraph eval --query-set cjk --path /path/to/project --json
+mdgraph eval --query-mode semantic --json
 ```
 
-`mdgraph eval` runs the alpha query set by default and reports pass/fail plus lightweight retrieval metrics. `--query-set ecc` selects path-only expected records for an indexed ECC-style workflow corpus. It is a deterministic engineering smoke check, not a completed IR benchmark or real agent A/B benchmark.
+`mdgraph eval` runs the alpha query set by default and reports pass/fail plus lightweight retrieval metrics. It also reports deterministic ranking diagnostics: query mode, RRF search fusion channels, MMR-style document-diverse context packing, and optional semantic reranking status. `--query-set ecc` selects path-only expected records for an indexed ECC-style workflow corpus. `--query-set cjk` selects a small Chinese/Japanese retrieval baseline covered by lightweight CJK n-gram preprocessing. It is a deterministic engineering smoke check, not a completed IR benchmark or real agent A/B benchmark.
 
 1. Why does a specific error code affect a specific user flow?
 2. Which older decisions does a given design document depend on?
@@ -46,6 +48,16 @@ The machine-readable expected records live in `src/evaluation/retrieval-eval.ts`
 
 The `ecc` query set is for external ECC-style workflow corpora. It stores only query text and expected relative Markdown paths such as `CLAUDE.md`, `hooks/README.md`, `commands/quality-gate.md`, `legacy-command-shims/README.md`, `docs/ECC-2.0-SESSION-ADAPTER-DISCOVERY.md`, `docs/SELECTIVE-INSTALL-ARCHITECTURE.md`, `docs/security/supply-chain-incident-response.md`, and `contexts/review.md`. It intentionally leaves expected sections, entities, edges, and source refs empty until there is a stable content-free section-anchor baseline for that external corpus.
 
+## CJK Expected Records
+
+The `cjk` query set is a v0.5 retrieval baseline for Chinese and Japanese Markdown. It uses expected records from the repository test fixture `createCjkFixtureDocs`, including Chinese design/API/runbook/spec documents and a Japanese design document. Its cases cover:
+
+- Chinese spaced keyword queries such as `登录流程 缓存超时 认证重试`.
+- Continuous Chinese natural-language phrasing such as `缓存超时影响登录流程的处理`, covered by the lightweight CJK n-gram preprocessing baseline.
+- Mixed Latin/CJK queries for config keys, API routes, source refs, and Japanese symbols.
+
+This query set should be used to compare future CJK tokenizer, RRF/MMR, or reranking changes against the current baseline without making remote models mandatory for indexing or search.
+
 ## Measurement Notes
 
 For each question, compare agent behavior with and without MDGraph attached:
@@ -55,6 +67,7 @@ For each question, compare agent behavior with and without MDGraph attached:
 - Whether the answer includes an explainable graph path.
 - Whether the context returned by MDGraph is sufficient without follow-up file inspection.
 - Time and tool-call count for the full agent run.
-- `mdgraph eval` metrics: top-K document recall, expected-section recall, context precision, trace success, latency, returned character count, budget fit, fanout, and reason coverage.
+- `mdgraph eval` metrics: top-K document recall, expected-section recall, context precision, trace success, latency, returned character count, budget fit, fanout, context diversity, reason coverage, and ranking reason coverage.
+- `mdgraph eval` ranking report: query mode, RRF search fusion channels, MMR-style context packing strategy, optional reranker status, and semantic-active case count.
 
 The current repository has unit, integration, MCP, CLI, semantic, incremental, doctor, and retrieval-evaluation tests, but it has not yet run a real agent A/B benchmark on these questions.
