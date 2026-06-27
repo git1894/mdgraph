@@ -106,6 +106,33 @@ export interface DoctorWarning {
   remediation: string;
 }
 
+export const DOCTOR_WARNING_CODES = [
+  "index.stale",
+  "link.dead",
+  "source_ref.missing",
+  "definition.missing",
+  "definition.duplicate",
+  "content.risk",
+  "document.orphan",
+  "document.deleted",
+  "document.weakly_linked",
+  "document.deprecated_referenced",
+  "document.superseded_referenced",
+  "document.parse_failed",
+  "graph.missing_decision_link",
+  "storage.generated_path_indexed",
+  "storage.database_oversized",
+  "storage.fts_shadow_large",
+  "storage.high_degree_node",
+  "storage.vector_anomaly",
+  "front_matter.invalid_yaml",
+  "front_matter.not_mapping",
+  "front_matter.unclosed",
+  "front_matter.invalid_field",
+  "tag.invalid_format",
+  "link.non_posix_path"
+] as const;
+
 export interface StaleIndexIssue {
   path: string;
   reason: "added" | "deleted" | "modified" | "id_changed";

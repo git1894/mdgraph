@@ -12,7 +12,7 @@
 [![Release](https://img.shields.io/github/v/release/git1894/MDGraph?include_prereleases&label=release)](https://github.com/git1894/MDGraph/releases)
 
 <br>
-<a href="./README-ZH.md">简体中文</a> • <a href="./docs/EN/Architecture.md">Architecture</a> • <a href="./docs/EN/Agent_Integration.md">Agent Integration</a> • <a href="./docs/EN/Evaluation_Questions.md">Evaluation_Questions</a>
+<a href="./README-ZH.md">简体中文</a> • <a href="./docs/EN/Architecture.md">Architecture</a> • <a href="./docs/EN/Public_Contracts.md">Public Contracts</a> • <a href="./docs/EN/Agent_Integration.md">Agent Integration</a> • <a href="./docs/EN/Evaluation_Questions.md">Evaluation_Questions</a>
 <br>
 **MDGraph is the documentation intelligence layer for AI coding agents.**
 It turns your Markdown docs — specs, ADRs, runbooks, API references, design docs — into a local SQLite graph that agents query directly instead of grep-searching a wall of `.md` files.
@@ -241,7 +241,7 @@ node dist/bin/mdgraph.js help                              # All commands
 node dist/bin/mdgraph.js help search                       # Command-specific help
 ```
 
-All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality, RRF search fusion, MMR-style document-diverse context packing, query mode, and optional semantic reranking diagnostics; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content; `--query-set cjk` records a small Chinese/Japanese retrieval baseline covered by lightweight CJK n-gram preprocessing. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md).
+All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality, RRF search fusion, MMR-style document-diverse context packing, query mode, and optional semantic reranking diagnostics; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content; `--query-set cjk` records a small Chinese/Japanese retrieval baseline covered by lightweight CJK n-gram preprocessing. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md); stability labels and compatibility rules are in [Public_Contracts.md](docs/EN/Public_Contracts.md).
 
 `bundle create` currently supports only `--profile private`. It writes a directory artifact with `manifest.json`, `graph.db`, `config.json`, and a storage/status report. The manifest records schema version, graph counts, config/source hashes, and provenance, but not Markdown body content or the absolute project root. `report` is intended for CI artifacts and local workflow checks; trend state is based only on an explicit `--previous-report` file.
 

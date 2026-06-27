@@ -1,5 +1,5 @@
 export { DEFAULT_CONFIG, configPath, databasePath, initConfig, loadConfig } from "./config/load-config.js";
-export { runDoctor, formatDoctorReport } from "./analysis/doctor.js";
+export { DOCTOR_WARNING_CODES, runDoctor, formatDoctorReport } from "./analysis/doctor.js";
 export { formatBenchmarkReport, generateBenchmarkReport, loadBenchmarkReport, parseAgentRunRecords } from "./benchmark/benchmark.js";
 export { createGraphBundle, verifyGraphBundle, sourceSnapshot, hashCanonical, canonicalJson } from "./bundle/bundle.js";
 export { openDatabase } from "./db/connection.js";

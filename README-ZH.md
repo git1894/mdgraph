@@ -11,7 +11,7 @@
 [![Release](https://img.shields.io/github/v/release/git1894/MDGraph?include_prereleases&label=release)](https://github.com/git1894/MDGraph/releases)
 
 <br>
-<a href="./README.md">ENGLISH</a> • <a href="./docs/ZH/Architecture.md">架构说明</a> • <a href="./docs/ZH/Agent_Integration.md">Agent 集成</a> • <a href="./docs/ZH/Evaluation_Questions.md">使用评估</a>
+<a href="./README.md">ENGLISH</a> • <a href="./docs/ZH/Architecture.md">架构说明</a> • <a href="./docs/ZH/Public_Contracts.md">公开契约</a> • <a href="./docs/ZH/Agent_Integration.md">Agent 集成</a> • <a href="./docs/ZH/Evaluation_Questions.md">使用评估</a>
 <br>
 
 **MDGraph 是 AI 编码代理的文档智能层。**
@@ -241,7 +241,7 @@ node dist/bin/mdgraph.js help                              # 所有命令
 node dist/bin/mdgraph.js help search                       # 特定命令的帮助
 ```
 
-所有查询命令都支持 `--json`，为代理和脚本提供结构化输出。`mdgraph eval` 报告 search/context/trace 质量、RRF 搜索融合、MMR-style 跨文档上下文打包、query mode 和可选语义 reranking 诊断；它是确定性 smoke 检查，不是真实 agent A/B benchmark。默认 `alpha` query set 面向内置 fixture 语料；`--query-set ecc` 面向已索引的 ECC 风格工作区，只使用 path-only 期望记录，不复制外部内容；`--query-set cjk` 记录小型中文/日文检索基线，并由轻量 CJK n-gram 预处理覆盖连续 CJK 查询。稳定的顶层字段记录在 [Output_Contracts.md](docs/ZH/Output_Contracts.md)。
+所有查询命令都支持 `--json`，为代理和脚本提供结构化输出。`mdgraph eval` 报告 search/context/trace 质量、RRF 搜索融合、MMR-style 跨文档上下文打包、query mode 和可选语义 reranking 诊断；它是确定性 smoke 检查，不是真实 agent A/B benchmark。默认 `alpha` query set 面向内置 fixture 语料；`--query-set ecc` 面向已索引的 ECC 风格工作区，只使用 path-only 期望记录，不复制外部内容；`--query-set cjk` 记录小型中文/日文检索基线，并由轻量 CJK n-gram 预处理覆盖连续 CJK 查询。稳定的顶层字段记录在 [Output_Contracts.md](docs/ZH/Output_Contracts.md)；稳定性标签和兼容规则记录在 [Public_Contracts.md](docs/ZH/Public_Contracts.md)。
 
 `bundle create` 当前只支持 `--profile private`。它会写入包含 `manifest.json`、`graph.db`、`config.json` 和 storage/status 报告的目录 artifact。manifest 记录 schema version、图计数、config/source hashes 和 provenance，但不记录 Markdown 正文或绝对项目根目录。`report` 面向 CI artifact 和本地工作流检查；trend 状态只来自显式传入的 `--previous-report` 文件。
 

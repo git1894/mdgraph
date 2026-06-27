@@ -87,6 +87,14 @@ function runCleanProjectSmoke() {
   const graphJsonVerify = runCliJson(root, ["import", "graphjson", graphJsonPath, "--verify", "--json"]);
   assertEqual(graphJsonVerify.valid, true, "import graphjson --verify should accept a fresh export");
 
+  const invalidGraphJsonPath = path.join(root, "invalid-graph.json");
+  fs.writeFileSync(invalidGraphJsonPath, `${JSON.stringify({ ...graphJson, formatVersion: 999 }, null, 2)}\n`, "utf8");
+  const invalidGraphJsonVerify = runCli(root, ["import", "graphjson", invalidGraphJsonPath, "--verify", "--json"], { expectedExitCode: 1 });
+  const invalidGraphJson = JSON.parse(invalidGraphJsonVerify.stdout);
+  assertEqual(invalidGraphJson.valid, false, "invalid GraphJSON verify should fail");
+  assertEqual(invalidGraphJson.errors[0].code, "graphjson.format_version", "invalid GraphJSON verify should expose a stable error code");
+  assert(invalidGraphJson.errors[0].remediation.includes("formatVersion 1"), "invalid GraphJSON verify should include remediation");
+
   const mermaid = runCli(root, ["export", "mermaid", "trace", "AuthService", "RedisTimeoutError"]);
   assert(mermaid.stdout.includes("flowchart LR"), "export mermaid trace should emit Mermaid flowchart text");
   assert(mermaid.stdout.includes("REFERENCES /") || mermaid.stdout.includes("DEFINES /"), "export mermaid trace should include edge kind labels");

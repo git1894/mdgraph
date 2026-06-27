@@ -1,6 +1,6 @@
 # MDGraph 输出契约
 
-本文记录当前 CLI 表面的稳定顶层 JSON 形状。除非另有说明，嵌套记录字段遵循 `src/types.ts` 中的公开 TypeScript 模型。
+本文记录当前 CLI 表面的稳定顶层 JSON 形状。除非另有说明，嵌套记录字段遵循 `src/types.ts` 中的公开 TypeScript 模型。稳定性标签、兼容规则和 1.0 readiness 条件见 [Public_Contracts.md](Public_Contracts.md)。
 
 ## `index --json`
 

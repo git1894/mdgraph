@@ -1,13 +1,19 @@
 # MDGraph Release Checklist
 
-Use this checklist before publishing an MDGraph release or asking a maintainer to cut one. It complements [CHANGELOG.md](../../CHANGELOG.md), [Output_Contracts.md](Output_Contracts.md), [Alpha_Results.md](Alpha_Results.md), and the task public check described in [docs/tasks/README.md](../tasks/README.md).
+Use this checklist before publishing an MDGraph release or asking a maintainer to cut one. It complements [CHANGELOG.md](../../CHANGELOG.md), [Output_Contracts.md](Output_Contracts.md), [Public_Contracts.md](Public_Contracts.md), [Alpha_Results.md](Alpha_Results.md), and the task public check described in [docs/tasks/README.md](../tasks/README.md).
 
 ## Public checks
 
 - Confirm `package.json` version and CLI `program.version(...)` match.
 - Confirm [CHANGELOG.md](../../CHANGELOG.md) has an entry for the release.
-- Review README quick start, requirements, MCP setup, output contracts, and known tradeoffs when public CLI/MCP behavior changed.
+- Review README quick start, requirements, MCP setup, output contracts, public contract labels, and known tradeoffs when public CLI/MCP behavior changed.
 - Refresh [Alpha_Results.md](Alpha_Results.md) when parser, scanner, storage, query, MCP, or doctor behavior changes materially on external corpora.
+
+## 0.8 contract gate
+
+- Confirm [Public_Contracts.md](Public_Contracts.md) labels every touched public surface as `stable`, `stable-additive`, `experimental`, `reserved`, or `internal`.
+- Confirm focused contract tests cover MCP tool definitions, representative JSON fields, edge kinds, doctor warning shape, config defaults, and schema compatibility guidance.
+- Confirm structured error outputs include a stable `code` and remediation where the command already returns structured errors.
 
 ## Command gate
 
@@ -45,7 +51,7 @@ Expected results:
 
 ## Package gate
 
-- Inspect the tarball contents if package metadata changed: `npm pack --dry-run`.
+- Inspect the tarball contents if package metadata or included public docs changed: `npm pack --dry-run`.
 - Confirm the package includes `dist`, `README.md`, `CHANGELOG.md`, and `LICENSE`.
 - Confirm no `.mdgraph/`, task artifact directory, temp output, local database, or external workspace content is included.
 

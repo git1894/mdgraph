@@ -25,6 +25,10 @@ MDGraph uses this implemented pipeline: scanner -> parser -> extractor/resolver 
 | Watch | `src/watcher/file-watcher.ts` | Debounced incremental reindexing via chokidar. |
 | Analysis | `src/analysis/doctor.ts` | Documentation health and governance report. |
 
+## Public Contract Boundary
+
+The public contract boundary is tracked in [Public_Contracts.md](Public_Contracts.md). In short, CLI command names and documented flags, top-level CLI JSON fields, MCP tool names and input schemas, documented config fields, GraphJSON format v1, public graph record types, active edge kinds, and doctor warning shape are public surfaces. SQLite rowids, FTS shadow tables, private bundle database internals, temporary paths, and implementation helper APIs are internal.
+
 ## Data Model
 
 The SQLite database is stored at `.mdgraph/graph.db` and created from `src/db/schema.sql`.

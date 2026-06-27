@@ -42,6 +42,8 @@ export type EdgeKind =
   | "RELATED_TO"
   | "CONTRADICTS";
 
+export const RESERVED_EDGE_KINDS = ["SAME_AS", "RELATED_TO", "CONTRADICTS"] as const satisfies readonly EdgeKind[];
+
 export type Provenance =
   | "frontmatter"
   | "markdown_link"

@@ -1,13 +1,19 @@
 # MDGraph 发布清单
 
-在发布 MDGraph 或请求维护者切 release 前使用此清单。它补充 [CHANGELOG.md](../../CHANGELOG.md)、[Output_Contracts.md](Output_Contracts.md)、[Alpha_Results.md](Alpha_Results.md) 和 [docs/tasks/README.md](../tasks/README.md) 中的 task public check。
+在发布 MDGraph 或请求维护者切 release 前使用此清单。它补充 [CHANGELOG.md](../../CHANGELOG.md)、[Output_Contracts.md](Output_Contracts.md)、[Public_Contracts.md](Public_Contracts.md)、[Alpha_Results.md](Alpha_Results.md) 和 [docs/tasks/README.md](../tasks/README.md) 中的 task public check。
 
 ## 公开检查
 
 - 确认 `package.json` 版本和 CLI `program.version(...)` 一致。
 - 确认 [CHANGELOG.md](../../CHANGELOG.md) 已包含本次发布条目。
-- 当公开 CLI/MCP 行为变化时，复查 README quick start、运行要求、MCP setup、输出契约和已知 tradeoff。
+- 当公开 CLI/MCP 行为变化时，复查 README quick start、运行要求、MCP setup、输出契约、公开契约标签和已知 tradeoff。
 - 当 parser、scanner、storage、query、MCP 或 doctor 行为对外部语料产生实质变化时，刷新 [Alpha_Results.md](Alpha_Results.md)。
+
+## 0.8 契约门槛
+
+- 确认 [Public_Contracts.md](Public_Contracts.md) 为每个被触及的 public surface 标注 `stable`、`stable-additive`、`experimental`、`reserved` 或 `internal`。
+- 确认 focused contract tests 覆盖 MCP tool definitions、代表性 JSON fields、edge kinds、doctor warning shape、config defaults 和 schema compatibility guidance。
+- 已经返回结构化错误的命令，应确认错误输出包含稳定 `code` 和 remediation。
 
 ## 命令门槛
 
@@ -45,7 +51,7 @@ git diff --check
 
 ## Package 门槛
 
-- 如果 package metadata 变化，使用 `npm pack --dry-run` 检查 tarball 内容。
+- 如果 package metadata 或 included public docs 变化，使用 `npm pack --dry-run` 检查 tarball 内容。
 - 确认 package 包含 `dist`、`README.md`、`CHANGELOG.md` 和 `LICENSE`。
 - 确认 package 不包含 `.mdgraph/`、任务工件目录、临时输出、本地数据库或外部工作区内容。
 

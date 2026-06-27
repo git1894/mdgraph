@@ -1,6 +1,6 @@
 {
   "name": "mdgraph",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Local-first Markdown document graph for AI coding workflows.",
   "type": "module",
   "license": "MIT",
@@ -15,10 +15,8 @@
   "files": [
     "dist",
     "agent-pack",
-    "docs/EN/Agent_Integration.md",
-    "docs/EN/Agent_File_Read_Comparison.md",
-    "docs/ZH/Agent_Integration.md",
-    "docs/ZH/Agent_File_Read_Comparison.md",
+    "docs/EN/*.md",
+    "docs/ZH/*.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

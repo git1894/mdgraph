@@ -6,6 +6,20 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.8.0 - 2026-06-27
+
+### Added
+
+- Added public contract documentation for stability labels, CLI/MCP/JSON/config/schema/type surfaces, compatibility rules, schema/config migration guidance, and 1.0 readiness criteria.
+- Added focused contract tests for MCP tool definitions, representative JSON output fields, edge kinds, reserved edge kinds, doctor warning codes, config defaults, schema compatibility guidance, and doctor warning shape.
+- Added package exports for doctor warning codes and reserved edge kind metadata so contract checks can use source-of-truth values.
+- Added CLI smoke coverage for GraphJSON verify failure exit behavior and structured remediation.
+
+### Changed
+
+- Updated release checklists, README links, architecture docs, and output-contract docs to reference the new public contract boundary.
+- Included public English and Chinese docs in the npm package file list.
+
 ## 0.7.1 - 2026-06-27
 
 ### Fixed
