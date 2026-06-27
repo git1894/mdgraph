@@ -8,7 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node](https://img.shields.io/badge/Node-%3E%3D22.5.0-brightgreen.svg)](https://nodejs.org/)
-[![npm version](https://img.shields.io/badge/version-0.6.0-blue.svg)]()
+[![Release](https://img.shields.io/github/v/release/git1894/MDGraph?include_prereleases&label=release)](https://github.com/git1894/MDGraph/releases)
 
 <br>
 <a href="./README.md">ENGLISH</a> • <a href="./docs/ZH/Architecture.md">架构说明</a> • <a href="./docs/ZH/Agent_Integration.md">Agent 集成</a> • <a href="./docs/ZH/Evaluation_Questions.md">使用评估</a>
