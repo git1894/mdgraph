@@ -62,6 +62,8 @@ function runCleanProjectSmoke() {
 
   const context = runCliJson(root, ["context", "RedisTimeoutError login", "--json"]);
   assert(context.items.some((item) => item.path === "docs/login-flow.md"), "context should include login flow");
+  assert(context.items.every((item) => typeof item.nodeId === "string" && item.nodeId.length > 0), "context items should include recovery node ids");
+  assert(context.items.every((item) => typeof item.documentId === "string" && item.documentId.length > 0), "context items should include recovery document ids");
   assertEqual(context.debug, undefined, "context should not include debug details by default");
 
   const contextDebug = runCliJson(root, ["context", "RedisTimeoutError login", "--debug", "--json"]);
@@ -141,54 +143,78 @@ function runCleanProjectSmoke() {
 
 function runBenchmarkSmoke() {
   const root = makeTempRoot("mdgraph-cli-benchmark-");
-  const question = "Why does RedisTimeoutError affect LoginFlow?";
-  const expectedPaths = [
-    "docs/redis-cache-design.md",
-    "docs/login-flow.md",
-    "docs/runbooks/auth-retry-runbook.md"
+  const benchmarkCases = [
+    {
+      id: "alpha-1",
+      question: "Why does RedisTimeoutError affect LoginFlow?",
+      searchQuery: "RedisTimeoutError LoginFlow",
+      expectedPaths: ["docs/redis-cache-design.md", "docs/login-flow.md", "docs/runbooks/auth-retry-runbook.md"]
+    },
+    {
+      id: "alpha-2",
+      question: "Which runbook covers auth retry when Redis timeout affects login?",
+      searchQuery: "AuthRetryRunbook RedisTimeoutError LoginFlow",
+      expectedPaths: ["docs/runbooks/auth-retry-runbook.md", "docs/login-flow.md", "docs/redis-cache-design.md"]
+    },
+    {
+      id: "alpha-3",
+      question: "Which cache design documents retry guidance for login failures?",
+      searchQuery: "cache retry LoginFlow RedisTimeoutError",
+      expectedPaths: ["docs/redis-cache-design.md", "docs/login-flow.md", "docs/runbooks/auth-retry-runbook.md"]
+    }
   ];
   writeBenchmarkDocs(root);
   runCli(root, ["init", "--docs", "docs/**/*.md"]);
   runCli(root, ["index", "--json"]);
 
+  const runs = benchmarkCases.flatMap((benchmarkCase) => benchmarkRunPair(root, benchmarkCase));
+  const benchmarkPath = path.join(root, "benchmark-runs.json");
+  fs.writeFileSync(benchmarkPath, `${JSON.stringify({ runs }, null, 2)}\n`, "utf8");
+
+  const benchmarkReport = runCliJson(root, ["report", "--json", "--benchmark", benchmarkPath]);
+  assertEqual(benchmarkReport.benchmark.summary.completePairs, 3, "report --benchmark should include three complete paired benchmarks");
+  assertEqual(benchmarkReport.benchmark.summary.aggregateDelta.directFileReads, -9, "benchmark aggregate should report file-read delta");
+  assertEqual(benchmarkReport.benchmark.summary.aggregateDelta.mdgraphCalls, 3, "benchmark aggregate should report MDGraph call delta");
+}
+
+function benchmarkRunPair(root, benchmarkCase) {
   const withStartedAt = new Date().toISOString();
   const withStart = Date.now();
-  const contextResult = runCli(root, ["context", question, "--json"]);
+  const contextResult = runCli(root, ["context", benchmarkCase.question, "--json"]);
   const withLatencyMs = Date.now() - withStart;
   const context = JSON.parse(contextResult.stdout);
-  const contextPaths = unique(context.items.map((item) => item.path)).filter((item) => expectedPaths.includes(item));
+  const contextPaths = unique(context.items.map((item) => item.path)).filter((item) => benchmarkCase.expectedPaths.includes(item));
 
   const withoutStartedAt = new Date().toISOString();
   const withoutStart = Date.now();
-  const textSearch = searchMarkdown(root, "RedisTimeoutError LoginFlow");
-  const directFileReads = expectedPaths.map((relativePath) => ({
+  const textSearch = searchMarkdown(root, benchmarkCase.searchQuery);
+  const directFileReads = benchmarkCase.expectedPaths.map((relativePath) => ({
     path: relativePath,
     chars: fs.readFileSync(path.join(root, relativePath), "utf8").length
   }));
   const withoutLatencyMs = Date.now() - withoutStart;
 
-  const benchmarkPath = path.join(root, "benchmark-runs.json");
-  const runs = [
+  return [
     {
-      id: "smoke-with-mdgraph",
-      questionId: "alpha-1",
-      question,
+      id: `smoke-with-mdgraph-${benchmarkCase.id}`,
+      questionId: benchmarkCase.id,
+      question: benchmarkCase.question,
       mode: "with_mdgraph",
       startedAt: withStartedAt,
       completedAt: new Date().toISOString(),
       toolCalls: [{ name: "mdgraph_context", outputChars: contextResult.stdout.length }],
       directFileReads: [],
       textSearches: [],
-      mdgraphCalls: [{ tool: "mdgraph_context", query: question, resultCount: context.items.length, chars: context.usedChars }],
+      mdgraphCalls: [{ tool: "mdgraph_context", query: benchmarkCase.question, resultCount: context.items.length, chars: context.usedChars }],
       finalCitations: contextPaths.map((documentPath) => ({ path: documentPath })),
       rawFileFallback: false,
       characterBudget: context.usedChars,
       latencyMs: withLatencyMs
     },
     {
-      id: "smoke-without-mdgraph",
-      questionId: "alpha-1",
-      question,
+      id: `smoke-without-mdgraph-${benchmarkCase.id}`,
+      questionId: benchmarkCase.id,
+      question: benchmarkCase.question,
       mode: "without_mdgraph",
       startedAt: withoutStartedAt,
       completedAt: new Date().toISOString(),
@@ -197,20 +223,14 @@ function runBenchmarkSmoke() {
         ...directFileReads.map((read) => ({ name: "read_file", outputChars: read.chars }))
       ],
       directFileReads,
-      textSearches: [{ query: "RedisTimeoutError LoginFlow", resultCount: textSearch.resultCount }],
+      textSearches: [{ query: benchmarkCase.searchQuery, resultCount: textSearch.resultCount }],
       mdgraphCalls: [],
-      finalCitations: expectedPaths.map((documentPath) => ({ path: documentPath })),
+      finalCitations: benchmarkCase.expectedPaths.map((documentPath) => ({ path: documentPath })),
       rawFileFallback: true,
       characterBudget: textSearch.outputChars + directFileReads.reduce((total, read) => total + read.chars, 0),
       latencyMs: withoutLatencyMs
     }
   ];
-  fs.writeFileSync(benchmarkPath, `${JSON.stringify({ runs }, null, 2)}\n`, "utf8");
-
-  const benchmarkReport = runCliJson(root, ["report", "--json", "--benchmark", benchmarkPath]);
-  assertEqual(benchmarkReport.benchmark.summary.completePairs, 1, "report --benchmark should include one complete paired benchmark");
-  assertEqual(benchmarkReport.benchmark.summary.aggregateDelta.directFileReads, -3, "benchmark aggregate should report file-read delta");
-  assertEqual(benchmarkReport.benchmark.summary.aggregateDelta.mdgraphCalls, 1, "benchmark aggregate should report MDGraph call delta");
 }
 
 function runStrictFailureSmoke() {
@@ -317,6 +337,9 @@ function runExternalEccSmoke() {
   }
   runCli(root, ["index", "--json"]);
   runCli(root, ["doctor", "--json"]);
+  const evalReport = runCliJson(root, ["eval", "--query-set", "ecc", "--path", root, "--json"]);
+  assertEqual(evalReport.querySet, "ecc", "external ECC eval should use the ECC query set when enabled");
+  assert(evalReport.cases.length > 0, "external ECC eval should include path-only cases when enabled");
   const bundle = runCliJson(root, ["bundle", "create", "--profile", "private", "--json"]);
   const verified = runCliJson(root, ["bundle", "verify", bundle.bundleDir, "--json"]);
   assertEqual(verified.valid, true, "external ECC bundle should verify when MDGRAPH_EXTERNAL_ECC_PATH is enabled");

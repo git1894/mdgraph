@@ -4,6 +4,8 @@ These notes record early 0.3 evidence for query-first, file-read-second agent wo
 
 For the v0.6 structured benchmark contract, use `mdgraph report --benchmark benchmark-runs.json --json`. That report consumes paired `with_mdgraph` / `without_mdgraph` run records and calculates aggregate deltas without storing full transcripts.
 
+The v0.9 CLI smoke generates a three-question structured benchmark fixture from actual `mdgraph context` calls and direct Markdown reads. It is still aggregate evidence, not a hosted-agent runtime or transcript parser.
+
 ## Method
 
 The comparison uses two deterministic sources already in the repository:

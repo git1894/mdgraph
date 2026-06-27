@@ -57,9 +57,11 @@
 - `query`：原始查询文本。
 - `maxChars`：配置的上下文预算。
 - `usedChars`：已打包字符数。
-- `items`：上下文条目，包含 `path`、`title`、可选 `heading`、可选 `lines`、`reason`、`matchedEntities`、可选 `sourceRefs`、可选 `riskNotes` 和 `content`。
+- `items`：上下文条目，包含 `nodeId`、`documentId`、可选 `sectionId`、可选 `anchor`、`path`、`title`、可选 `heading`、可选 `lines`、`reason`、`matchedEntities`、可选 `edgePath`、可选 `sourceRefs`、可选 `riskNotes` 和 `content`。
 
 `riskNotes` 可包含生命周期/trust 提醒，以及确定性的内容风险提示，例如 prompt-injection 文本、active HTML/data URI 或隐藏 Unicode 格式字符。
+
+`nodeId`、`documentId`、`sectionId`、`anchor` 和 `lines` 是恢复字段，用于从打包后的 context item 跳转到 `node`、`trace` 或 raw Markdown。`edgePath` 在 graph expansion 贡献该条目时出现；每个 step 包含 `fromId`、`fromLabel`、`edgeFromId`、`edgeToId`、`edgeKind`、`toId`、`toLabel`、`traversalDirection`、`confidence` 和 `provenance`。
 
 `mdgraph context <query> --debug --json` 保持相同字段，并增加 `debug`：
 

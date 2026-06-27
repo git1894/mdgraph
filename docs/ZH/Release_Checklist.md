@@ -15,6 +15,21 @@
 - 确认 focused contract tests 覆盖 MCP tool definitions、代表性 JSON fields、edge kinds、doctor warning shape、config defaults 和 schema compatibility guidance。
 - 已经返回结构化错误的命令，应确认错误输出包含稳定 `code` 和 remediation。
 
+## 0.9 证据门槛
+
+- 确认 [Public_Contracts.md](Public_Contracts.md) 将 context recovery fields 标注为 `stable-additive`。
+- 确认 context、MCP 和 contract tests 覆盖 `nodeId`、`documentId`、可选 `sectionId`、可选 `anchor` 和 graph-expansion `edgePath`。
+- 确认 `smoke:cli` 覆盖多问题结构化 benchmark，并记录 external ECC skip/pass 行为。
+- 除非单独 release 明确冻结，否则确认 optional semantic 行为仍保持 experimental。
+
+## 1.0 readiness 门槛
+
+- 确认已知 output-shape 不一致已经规范化，或被明确记录为刻意保留。
+- 确认 `context --json` 和 MCP `mdgraph_context.structuredContent` 暴露恢复字段（`nodeId`、`documentId`、可选 `sectionId`、可选 `anchor` 和 graph-expansion `edgePath`），方便 agent 交接到 `node`、`trace` 和 raw Markdown。
+- 确认 Node.js `>=22.5.0` 仍是支持下限，且当前 release 已在当前 Node 22.x 上测试。
+- 确认 Windows 已在本地或 CI smoke。`1.0` 前 macOS 和 Linux 应有 CI 或 release maintainer smoke。
+- 确认 1.0 release notes 将兼容承诺与功能新增分开说明。
+
 ## 命令门槛
 
 安装依赖后，从仓库根目录运行：
@@ -45,9 +60,10 @@ git diff --check
 - `status --storage --json` 返回 `{ counts, storage }`，并包含 database、object、path group、edge kind、high-degree node 和 vector 信息。
 - `bundle create`、`bundle verify` 和 `report --json --eval --bundle` 为当前仓库索引返回有效的私有工作流 artifact。
 - `diff --base` 和 `report --base` 返回 documentation graph impact summary，且不会替换当前 index。
-- `report --benchmark` 返回 paired run-record delta，将不完整 pair 报告为 skipped，并且不需要 transcript 或 agent/model 执行。
+- `report --benchmark` 为多问题 smoke set 返回 paired run-record delta，将不完整 pair 报告为 skipped，并且不需要 transcript 或 agent/model 执行。
 - `task:public-check` 不应发现 `docs/tasks/` 下除允许公开文件外的已跟踪任务工件。
 - `git diff --check` 干净。Windows CRLF 文件如出现未改动行尾误报，可设置仓库本地 `core.whitespace=cr-at-eol`。
+- 当 scanner、parser、storage、query、MCP 或 doctor 行为对外部语料产生实质变化时，必须运行 external corpus smoke。如果未设置 `MDGRAPH_EXTERNAL_ECC_PATH`，应明确记录 skip。
 
 ## Package 门槛
 

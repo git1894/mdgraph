@@ -57,9 +57,11 @@ If no index exists, it returns:
 - `query`: original query text.
 - `maxChars`: configured context budget.
 - `usedChars`: packed character count.
-- `items`: context items with `path`, `title`, optional `heading`, optional `lines`, `reason`, `matchedEntities`, optional `sourceRefs`, optional `riskNotes`, and `content`.
+- `items`: context items with `nodeId`, `documentId`, optional `sectionId`, optional `anchor`, `path`, `title`, optional `heading`, optional `lines`, `reason`, `matchedEntities`, optional `edgePath`, optional `sourceRefs`, optional `riskNotes`, and `content`.
 
 `riskNotes` can include lifecycle/trust cautions and deterministic content-risk notes such as prompt-injection text, active HTML/data URIs, or hidden Unicode format characters.
+
+`nodeId`, `documentId`, `sectionId`, `anchor`, and `lines` are recovery fields for moving from a packed context item to `node`, `trace`, or raw Markdown. `edgePath` is present when graph expansion contributes the item; each step includes `fromId`, `fromLabel`, `edgeFromId`, `edgeToId`, `edgeKind`, `toId`, `toLabel`, `traversalDirection`, `confidence`, and `provenance`.
 
 `mdgraph context <query> --debug --json` keeps the same fields and adds `debug` with:
 

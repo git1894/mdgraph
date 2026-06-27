@@ -8,15 +8,33 @@ const DEFAULT_MAX_CONTEXT_NODES = 16;
 export const CONTEXT_PACKING_STRATEGY = "mmr-style-document-round-robin" as const;
 
 export interface ContextItem {
+  nodeId: string;
+  documentId: string;
+  sectionId?: string;
+  anchor?: string;
   path: string;
   title: string;
   heading?: string;
   lines?: { start: number; end: number };
   reason: string;
   matchedEntities: string[];
+  edgePath?: ContextEdgePathStep[];
   sourceRefs?: ContextSourceRef[];
   riskNotes?: string[];
   content: string;
+}
+
+export interface ContextEdgePathStep {
+  fromId: string;
+  fromLabel: string;
+  edgeFromId: string;
+  edgeToId: string;
+  edgeKind: EdgeKind;
+  toId: string;
+  toLabel: string;
+  traversalDirection: "forward" | "reverse";
+  confidence: number;
+  provenance: Provenance;
 }
 
 export interface ContextSourceRef {
@@ -64,8 +82,6 @@ export interface ContextDebug {
 }
 
 interface ContextCandidate extends ContextItem {
-  nodeId: string;
-  documentId: string;
   documentStatus: string;
   trustTier: TrustTier;
   trustTierDeclared: boolean;
@@ -77,7 +93,7 @@ interface ExpansionQueueItem {
   nodeId: string;
   depth: number;
   score: number;
-  path: string[];
+  path: ContextEdgePathStep[];
 }
 
 export interface ContextBuildOptions {
@@ -200,6 +216,8 @@ function candidateFromKnownRow(row: ChunkSearchRow, reason: string, index: numbe
     path: row.document.path,
     title: row.document.title,
     heading: row.section?.heading,
+    sectionId: row.section?.id,
+    anchor: row.section?.anchor,
     lines: row.section ? { start: row.section.startLine, end: row.section.endLine } : undefined,
     reason,
     matchedEntities: [],
@@ -304,7 +322,7 @@ function collectContextCandidates(
         continue;
       }
 
-      const step = formatExpansionStep(repository, current.nodeId, edge);
+      const step = expansionPathStep(repository, current.nodeId, edge);
       const path = [...current.path, step];
       const score = current.score + edgeScore(edge) - (current.depth + 1) * 2;
       visited.add(nextId);
@@ -317,9 +335,12 @@ function collectContextCandidates(
           path: row.document.path,
           title: row.document.title,
           heading: row.section?.heading,
+          sectionId: row.section?.id,
+          anchor: row.section?.anchor,
           lines: row.section ? { start: row.section.startLine, end: row.section.endLine } : undefined,
-          reason: `graph expansion via ${path.join(" | ")}`,
+          reason: `graph expansion via ${path.map(formatExpansionStep).join(" | ")}`,
           matchedEntities: [],
+          edgePath: path,
           content: row.chunk.content,
           nodeId: row.section?.id ?? row.document.id,
           documentId: row.document.id,
@@ -463,12 +484,17 @@ function packContext(query: string, candidates: ContextCandidate[], maxChars: nu
     }
     usedChars += content.length;
     items.push({
+      nodeId: candidate.nodeId,
+      documentId: candidate.documentId,
+      sectionId: candidate.sectionId,
+      anchor: candidate.anchor,
       path: candidate.path,
       title: candidate.title,
       heading: candidate.heading,
       lines: candidate.lines,
       reason: candidate.reason,
       matchedEntities: candidate.matchedEntities,
+      edgePath: candidate.edgePath,
       sourceRefs: candidate.sourceRefs,
       riskNotes: candidate.riskNotes,
       content
@@ -483,6 +509,8 @@ function candidateFromSearchResult(result: SearchResult): ContextCandidate {
     path: result.document.path,
     title: result.document.title,
     heading: result.section?.heading,
+    sectionId: result.section?.id,
+    anchor: result.section?.anchor,
     lines: result.section ? { start: result.section.startLine, end: result.section.endLine } : undefined,
     reason: result.reason,
     matchedEntities: result.matchedEntities.map(formatMatchedEntity),
@@ -521,14 +549,27 @@ function edgeScore(edge: GraphEdge): number {
   return edge.weight * edge.confidence;
 }
 
-function formatExpansionStep(repository: GraphRepository, currentId: string, edge: GraphEdge): string {
-  const currentLabel = repository.getNode(currentId)?.label ?? currentId;
+function expansionPathStep(repository: GraphRepository, currentId: string, edge: GraphEdge): ContextEdgePathStep {
   const nextId = edge.fromId === currentId ? edge.toId : edge.fromId;
-  const nextLabel = repository.getNode(nextId)?.label ?? nextId;
-  const edgeLabel = `${edge.kind}/${edge.provenance}/${edge.confidence}`;
-  return edge.fromId === currentId
-    ? `${currentLabel} --${edgeLabel}--> ${nextLabel}`
-    : `${currentLabel} <--${edgeLabel}-- ${nextLabel}`;
+  return {
+    fromId: currentId,
+    fromLabel: repository.getNode(currentId)?.label ?? currentId,
+    edgeFromId: edge.fromId,
+    edgeToId: edge.toId,
+    edgeKind: edge.kind,
+    toId: nextId,
+    toLabel: repository.getNode(nextId)?.label ?? nextId,
+    traversalDirection: edge.fromId === currentId ? "forward" : "reverse",
+    confidence: edge.confidence,
+    provenance: edge.provenance
+  };
+}
+
+function formatExpansionStep(step: ContextEdgePathStep): string {
+  const edgeLabel = `${step.edgeKind}/${step.provenance}/${step.confidence}`;
+  return step.traversalDirection === "forward"
+    ? `${step.fromLabel} --${edgeLabel}--> ${step.toLabel}`
+    : `${step.fromLabel} <--${edgeLabel}-- ${step.toLabel}`;
 }
 
 function formatMatchedEntity(entity: GraphEntity): string {

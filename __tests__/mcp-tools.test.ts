@@ -19,7 +19,7 @@ interface ContextToolStructuredContent {
     knownFiles?: string[];
     suggestedNextQueries?: string[];
     mode?: { name: string; searchLimit: number; maxDepth: number; maxChars: number };
-    items: Array<{ path: string; reason: string }>;
+    items: Array<{ nodeId: string; documentId: string; sectionId?: string; anchor?: string; path: string; reason: string }>;
   };
 }
 
@@ -116,9 +116,10 @@ describe("ToolHandler", () => {
     });
     const content = result.structuredContent as ContextToolStructuredContent & {
       context: {
-        items: Array<{ path: string; sourceRefs?: Array<{ path: string; edgeKind: string }> }>;
+        items: Array<{ nodeId: string; documentId: string; sectionId?: string; anchor?: string; path: string; sourceRefs?: Array<{ path: string; edgeKind: string }> }>;
       };
     };
+    const authItem = content.context.items.find((item) => item.path === "docs/auth-v2-design.md");
 
     expect(result.content[0].text).toContain("Known files: src/auth/AuthService.ts");
     expect(result.content[0].text).toContain("Suggested next queries:");
@@ -126,7 +127,13 @@ describe("ToolHandler", () => {
     expect(content.context.maxChars).toBe(120);
     expect(content.context.usedChars).toBeLessThanOrEqual(120);
     expect(content.context.knownFiles).toEqual(["src/auth/AuthService.ts"]);
-    expect(content.context.items.some((item) => item.path === "docs/auth-v2-design.md" && item.sourceRefs?.some((sourceRef) => sourceRef.path === "src/auth/AuthService.ts" && sourceRef.edgeKind === "IMPLEMENTS"))).toBe(true);
+    expect(authItem).toEqual(expect.objectContaining({
+      nodeId: expect.stringMatching(/^section:/),
+      documentId: expect.stringMatching(/^document:/),
+      sectionId: expect.stringMatching(/^section:/),
+      anchor: expect.any(String)
+    }));
+    expect(authItem?.sourceRefs?.some((sourceRef) => sourceRef.path === "src/auth/AuthService.ts" && sourceRef.edgeKind === "IMPLEMENTS")).toBe(true);
   });
 
   it("rejects projectPath and numeric budgets outside the served MCP bounds", async () => {

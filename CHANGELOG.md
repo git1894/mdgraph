@@ -6,6 +6,17 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.9.0 - 2026-06-28
+
+### Added
+
+- Added structured context recovery fields (`nodeId`, `documentId`, optional `sectionId`, optional `anchor`, and graph-expansion `edgePath`) to `context --json` and MCP `mdgraph_context` structured output.
+- Expanded CLI smoke benchmark coverage from one paired run-record question to three and added external ECC eval smoke when `MDGRAPH_EXTERNAL_ECC_PATH` is enabled.
+
+### Changed
+
+- Updated output/public contract docs and release checklists for context recovery fields and multi-question benchmark smoke evidence.
+
 ## 0.8.0 - 2026-06-27
 
 ### Added

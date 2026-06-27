@@ -313,6 +313,7 @@ describe("regression coverage", () => {
     try {
       const context = buildContext(repository, DEFAULT_CONFIG, "AuthService");
       const debugContext = buildContext(repository, DEFAULT_CONFIG, "AuthService", { debug: true });
+      const direct = context.items.find((item) => item.path === "docs/auth-v2-design.md" && !item.reason.includes("graph expansion"));
       const dependency = context.items.find((item) => item.path === "docs/redis-cache-design.md");
       const firstExpandedIndex = context.items.findIndex((item) => item.reason.includes("graph expansion"));
       const lastDirectIndex = context.items.reduce(
@@ -320,9 +321,20 @@ describe("regression coverage", () => {
         -1
       );
 
+      expect(direct?.nodeId).toMatch(/^(document|section):/);
+      expect(direct?.documentId).toMatch(/^document:/);
+      if (direct?.sectionId) {
+        expect(direct.sectionId).toBe(direct.nodeId);
+        expect(direct.anchor).toBeTruthy();
+      }
       expect(dependency).toBeDefined();
+      expect(dependency?.nodeId).toMatch(/^section:/);
+      expect(dependency?.documentId).toMatch(/^document:/);
+      expect(dependency?.sectionId).toBe(dependency?.nodeId);
+      expect(dependency?.anchor).toBeTruthy();
       expect(dependency?.reason).toContain("graph expansion");
       expect(dependency?.reason).toContain("DEPENDS_ON");
+      expect(dependency?.edgePath?.some((step) => step.edgeKind === "DEPENDS_ON" && step.provenance === "frontmatter")).toBe(true);
       expect(firstExpandedIndex).toBeGreaterThan(lastDirectIndex);
       expect(context.debug).toBeUndefined();
       expect(debugContext.debug?.seedNodes).toBeGreaterThan(0);

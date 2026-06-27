@@ -26,7 +26,7 @@ afterEach(() => {
   tempDirs = [];
 });
 
-describe("0.8 public contracts", () => {
+describe("0.9 public contracts", () => {
   it("keeps MCP tool definitions stable and closed", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "mdgraph_search",
@@ -177,6 +177,8 @@ describe("0.8 public contracts", () => {
         debug: expect.objectContaining({ seedNodes: expect.any(Number), visitedNodes: expect.any(Number), expandedEdges: expect.any(Number), packingStrategy: expect.any(String) })
       }));
       expect(context.items[0]).toEqual(expect.objectContaining({
+        nodeId: expect.any(String),
+        documentId: expect.any(String),
         path: expect.any(String),
         reason: expect.any(String)
       }));
