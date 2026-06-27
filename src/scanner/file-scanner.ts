@@ -3,6 +3,7 @@ import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
 import type { MDGraphConfig } from "../types.js";
+import { isPathInsideOrEqual } from "../utils/path-safety.js";
 
 export async function scanMarkdownFiles(projectRoot: string, config: MDGraphConfig): Promise<string[]> {
   const ignore = await resolveIgnorePatterns(projectRoot, config);
@@ -26,6 +27,9 @@ export async function scanMarkdownFiles(projectRoot: string, config: MDGraphConf
   const accepted: string[] = [];
 
   for (const entry of entries.sort()) {
+    if (!isPathInsideOrEqual(projectRoot, entry)) {
+      continue;
+    }
     if (!allowedExtensions.some((extension) => entry.toLowerCase().endsWith(extension))) {
       continue;
     }
@@ -58,6 +62,9 @@ export function scanMarkdownFilesSync(projectRoot: string, config: MDGraphConfig
 
   const allowedExtensions = config.index.parseMdx ? [".md", ".mdx"] : [".md"];
   return entries.sort().filter((entry) => {
+    if (!isPathInsideOrEqual(projectRoot, entry)) {
+      return false;
+    }
     if (!allowedExtensions.some((extension) => entry.toLowerCase().endsWith(extension))) {
       return false;
     }

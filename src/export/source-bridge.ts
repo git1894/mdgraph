@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { GraphRepository } from "../db/repositories.js";
+import { readBoundedJsonFile } from "../utils/bounded-json.js";
 import { normalizePath } from "../utils/text.js";
 
 export interface SourceBridgeReport {
@@ -58,7 +59,7 @@ export function buildCodeGraphBridgeReport(repository: GraphRepository, options:
 
   let artifact: CodeGraphArtifact;
   try {
-    artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8")) as CodeGraphArtifact;
+    artifact = readBoundedJsonFile(artifactPath, "CodeGraph artifact") as CodeGraphArtifact;
   } catch (error) {
     return {
       format: "mdgraph-source-bridge",

@@ -319,6 +319,8 @@ When running as an MCP server, MDGraph exposes five focused tools:
 | `mdgraph_trace` | Find an explainable graph path between two nodes. | "How is A related to B" — relationship discovery. |
 | `mdgraph_status` | Report index availability, counts, database path, and lightweight Markdown freshness state. | Verify the index is active and not obviously stale before relying on it. |
 
+The MCP server is bound to the `serve --path` project root. Client-supplied `rootUri`, `workspaceFolders`, and tool `projectPath` values must stay inside that served root; manual MCP budgets are capped for search limit, trace depth, and context characters.
+
 In a workspace with no `.mdgraph/` index, the server announces itself inactive — agents fall back to normal file tools, and indexing stays your decision.
 
 ### Agent Usage Guidance
@@ -406,6 +408,8 @@ Configuration lives in `.mdgraph/config.json`, created by `mdgraph init`.
 | `embedding.provider` | | `"local-hash"` | Vector provider (only `local-hash` available) |
 | `embedding.model` | | `"default"` | Model name (reserved for future) |
 | `embedding.dimensions` | | `128` | Vector dimensions |
+
+Resource-amplifying numeric fields are bounded at load time: `index.maxFileBytes` <= 10 MiB, `search.defaultLimit` <= 100, `search.maxDepth` <= 12, `search.maxContextChars` <= 200000, `search.highFrequencyEntityThreshold` <= 100000, and `embedding.dimensions` <= 4096.
 
 Semantic search is entirely optional. Without vectors, MDGraph still works through FTS5 and graph traversal.
 

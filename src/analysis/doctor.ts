@@ -7,6 +7,8 @@ import { parseMarkdownDocument } from "../parser/markdown-parser.js";
 import { LinkResolver } from "../resolution/link-resolver.js";
 import { scanMarkdownFiles } from "../scanner/file-scanner.js";
 import type { FrontmatterDiagnostic, GraphDocument, ParsedDocument, SourceRef } from "../types.js";
+import { scanContentRiskLines } from "../utils/content-risk.js";
+import { relativePathInsideRoot, resolveInsideRoot } from "../utils/path-safety.js";
 import { normalizeEntityName, normalizePath } from "../utils/text.js";
 
 export interface DeadLinkIssue {
@@ -81,6 +83,11 @@ interface StorageWarningIssue {
 }
 
 export type DoctorWarningSeverity = "error" | "warn" | "info";
+
+interface ParseFailureIssue {
+  documentPath: string;
+  reason: string;
+}
 
 export interface DoctorWarningAffectedNode {
   kind: string;
@@ -220,16 +227,16 @@ export async function runDoctor(projectRoot: string, options: DoctorOptions = {}
   const scope = options.scope ?? allDoctorScope();
   const config = loadConfig(projectRoot);
   const files = await scanMarkdownFiles(projectRoot, config);
-  const parsedDocuments = files.map((file) => parseMarkdownDocument(projectRoot, file));
+  const { parsedDocuments, parseFailures, scannedPaths } = parseDoctorDocuments(projectRoot, files);
   const resolver = new LinkResolver(parsedDocuments);
   const repository = new GraphRepository(openDatabase(projectRoot, { createIfMissing: false, applySchema: options.applySchema ?? true }));
 
   try {
     const scopePaths = buildScopePathSet(scope, parsedDocuments, repository);
     const storageHealth = storageHealthForScope(buildStorageHealth(repository.storageDiagnostics(), repository.counts().chunks), scope);
-    const staleIndex = scopedStaleIndex(detectStaleIndex(parsedDocuments, repository.documentHashes()), scope, scopePaths);
+    const staleIndex = scopedStaleIndex(detectStaleIndex(parsedDocuments, repository.documentHashes(), scannedPaths), scope, scopePaths);
     if (staleIndex.stale) {
-      return staleDoctorReport(projectRoot, scopedDocumentCount(parsedDocuments, scope, scopePaths), staleIndex, scope, storageHealth);
+      return staleDoctorReport(projectRoot, scopedDocumentCount(parsedDocuments, scope, scopePaths), staleIndex, scope, storageHealth, parseFailures);
     }
 
     const stats = repository.documentLinkStats();
@@ -254,18 +261,14 @@ export async function runDoctor(projectRoot: string, options: DoctorOptions = {}
     ]);
     const sourceRefDocumentPaths = sourceRefDocumentPathMap(parsedDocuments);
     const staleSourceRefs = repository.allSourceRefs()
-      .map((sourceRef) => ({
-        sourceRef,
-        expectedPath: path.join(projectRoot, sourceRef.path),
-        documentPaths: sourceRefDocumentPaths.get(sourceRef.normalizedPath) ?? []
-      }))
-      .filter((issue) => !fs.existsSync(issue.expectedPath))
+      .map((sourceRef) => staleSourceRefIssue(projectRoot, sourceRef, sourceRefDocumentPaths.get(sourceRef.normalizedPath) ?? []))
+      .filter((issue): issue is StaleSourceRefIssue => Boolean(issue))
       .filter((issue) => scope.mode === "all" || issue.documentPaths.some((documentPath) => pathInScope(documentPath, scope, scopePaths)));
     const collisionStopEntities = new Set(config.entities.stopEntities.map(normalizeEntityName));
     const possibleContradictions = repository.definitionCollisions()
       .filter((issue) => !collisionStopEntities.has(normalizeEntityName(issue.entity.name)))
       .filter((issue) => scope.mode === "all" || issue.documents.some((document) => pathInScope(document.path, scope, scopePaths)));
-    const contentRisks = scopedParsedDocuments.flatMap((document) => scanContentRisks(document.relativePath, document.body));
+    const contentRisks = scopedParsedDocuments.flatMap((document) => scanDocumentContentRisks(document.relativePath, document.body));
     const frontmatterDiagnostics = scopedParsedDocuments.flatMap((document) => document.frontmatterDiagnostics
       .map((diagnostic) => ({ documentPath: document.relativePath, diagnostic })));
     const tagConventionIssues = scopedParsedDocuments.flatMap(detectTagConventionIssues);
@@ -289,6 +292,7 @@ export async function runDoctor(projectRoot: string, options: DoctorOptions = {}
       lifecycleReferences,
       missingDecisionLinks,
       scope,
+      parseFailures,
       storageWarnings: storageHealth.warnings
     });
 
@@ -376,7 +380,49 @@ function formatDoctorScope(scope: DoctorScope): string {
     : `changed (${changed} path(s), global health included: ${scope.globalHealthIncluded})`;
 }
 
-function detectStaleIndex(parsedDocuments: ParsedDocument[], indexed: Map<string, { id: string; hash: string }>): StaleIndexReport {
+function parseDoctorDocuments(projectRoot: string, files: string[]): {
+  parsedDocuments: ParsedDocument[];
+  parseFailures: ParseFailureIssue[];
+  scannedPaths: Set<string>;
+} {
+  const parsedDocuments: ParsedDocument[] = [];
+  const parseFailures: ParseFailureIssue[] = [];
+  const scannedPaths = new Set<string>();
+  for (const file of files) {
+    const relativePath = relativePathInsideRoot(projectRoot, file) ?? normalizePath(path.relative(projectRoot, file));
+    scannedPaths.add(relativePath);
+    try {
+      parsedDocuments.push(parseMarkdownDocument(projectRoot, file));
+    } catch (error) {
+      parseFailures.push({
+        documentPath: relativePath,
+        reason: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  return { parsedDocuments, parseFailures, scannedPaths };
+}
+
+function staleSourceRefIssue(projectRoot: string, sourceRef: SourceRef, documentPaths: string[]): StaleSourceRefIssue | undefined {
+  const expectedPath = resolveInsideRoot(projectRoot, sourceRef.path);
+  if (!expectedPath) {
+    return {
+      sourceRef,
+      expectedPath: "outside project root",
+      documentPaths
+    };
+  }
+  if (fs.existsSync(expectedPath)) {
+    return undefined;
+  }
+  return { sourceRef, expectedPath, documentPaths };
+}
+
+function detectStaleIndex(
+  parsedDocuments: ParsedDocument[],
+  indexed: Map<string, { id: string; hash: string }>,
+  currentPaths = new Set(parsedDocuments.map((document) => document.relativePath))
+): StaleIndexReport {
   const issues: StaleIndexIssue[] = [];
   const currentByPath = new Map(parsedDocuments.map((document) => [document.relativePath, document]));
 
@@ -410,7 +456,7 @@ function detectStaleIndex(parsedDocuments: ParsedDocument[], indexed: Map<string
   }
 
   for (const [documentPath, existing] of indexed) {
-    if (!currentByPath.has(documentPath)) {
+    if (!currentPaths.has(documentPath)) {
       issues.push({ path: documentPath, reason: "deleted", indexedId: existing.id, indexedHash: existing.hash });
     }
   }
@@ -425,7 +471,14 @@ function detectStaleIndex(parsedDocuments: ParsedDocument[], indexed: Map<string
   };
 }
 
-function staleDoctorReport(projectRoot: string, documentCount: number, staleIndex: StaleIndexReport, scope: DoctorScope, storage: DoctorStorageHealth): DoctorReport {
+function staleDoctorReport(
+  projectRoot: string,
+  documentCount: number,
+  staleIndex: StaleIndexReport,
+  scope: DoctorScope,
+  storage: DoctorStorageHealth,
+  parseFailures: ParseFailureIssue[]
+): DoctorReport {
   return {
     projectRoot,
     scope,
@@ -449,7 +502,7 @@ function staleDoctorReport(projectRoot: string, documentCount: number, staleInde
     possibleContradictions: [],
     contentRisks: [],
     frontmatterDiagnostics: [],
-    warnings: staleIndexWarnings(staleIndex),
+    warnings: sortWarnings([...staleIndexWarnings(staleIndex), ...parseFailures.map(parseFailureWarning)]),
     health: buildEmptyDoctorHealth(storage)
   };
 }
@@ -469,10 +522,12 @@ function buildDoctorWarnings(input: {
   lifecycleReferences: LifecycleReferenceIssue[];
   missingDecisionLinks: MissingDecisionLinkIssue[];
   scope: DoctorScope;
+  parseFailures: ParseFailureIssue[];
   storageWarnings: StorageWarningIssue[];
 }): DoctorWarning[] {
   return sortWarnings([
     ...staleIndexWarnings(input.staleIndex),
+    ...input.parseFailures.map(parseFailureWarning),
     ...input.frontmatterDiagnostics.map(frontmatterDiagnosticWarning),
     ...deletedDocumentWarnings(input.scope),
     ...input.tagConventionIssues.map(tagConventionWarning),
@@ -726,6 +781,17 @@ function frontmatterDiagnosticWarning(issue: FrontmatterDiagnosticIssue): Doctor
     },
     affectedNodes: [{ kind: "document", path: issue.documentPath, line: issue.diagnostic.line }],
     remediation: frontmatterRemediation(issue.diagnostic)
+  };
+}
+
+function parseFailureWarning(issue: ParseFailureIssue): DoctorWarning {
+  return {
+    code: "document.parse_failed",
+    severity: "error",
+    message: `Markdown document could not be parsed: ${issue.documentPath}`,
+    evidence: { documentPath: issue.documentPath, reason: issue.reason },
+    affectedNodes: [{ kind: "document", path: issue.documentPath }],
+    remediation: "Reduce extreme Markdown nesting/size or fix malformed content, then re-run mdgraph index and doctor."
   };
 }
 
@@ -1091,25 +1157,8 @@ function isLocalDocumentLink(url: string): boolean {
   return !/^(?:https?:|mailto:|#)/i.test(url) && /(?:\.mdx?|#)/i.test(url);
 }
 
-function scanContentRisks(documentPath: string, content: string): ContentRiskIssue[] {
-  const risks: ContentRiskIssue[] = [];
-  const lines = content.split(/\r?\n/);
-  lines.forEach((line, index) => {
-    const lower = line.toLowerCase();
-    if (lower.includes("ignore previous instructions") || lower.includes("system prompt")) {
-      risks.push({ documentPath, line: index + 1, reason: "possible prompt injection text" });
-    }
-    if (/<\s*(script|iframe)\b/i.test(line)) {
-      risks.push({ documentPath, line: index + 1, reason: "HTML script or iframe" });
-    }
-    if (/data:text\/html|data:application\/javascript/i.test(line)) {
-      risks.push({ documentPath, line: index + 1, reason: "active data URI" });
-    }
-    if (/\p{Cf}/u.test(line)) {
-      risks.push({ documentPath, line: index + 1, reason: "hidden Unicode format character" });
-    }
-  });
-  return risks;
+function scanDocumentContentRisks(documentPath: string, content: string): ContentRiskIssue[] {
+  return scanContentRiskLines(content).map((risk) => ({ documentPath, ...risk }));
 }
 
 function appendSection(lines: string[], title: string, items: string[]): void {

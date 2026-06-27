@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { generateBenchmarkReport, parseAgentRunRecords, type AgentRunRecord } from "../src/benchmark/benchmark.js";
+import { generateBenchmarkReport, loadBenchmarkReport, parseAgentRunRecords, type AgentRunRecord } from "../src/benchmark/benchmark.js";
 import { generateReport } from "../src/reporting/report.js";
 
 let tempDirs: string[] = [];
@@ -151,6 +151,14 @@ describe("v0.6.3 benchmark report", () => {
     expect(report.indexed).toBe(false);
     expect(report.benchmark?.summary.completePairs).toBe(1);
   });
+
+  it("rejects benchmark JSON inputs that exceed structure budgets", () => {
+    const root = makeTempRoot("mdgraph-benchmark-budget-");
+    const input = path.join(root, "deep-benchmark.json");
+    fs.writeFileSync(input, nestedJson(130), "utf8");
+
+    expect(() => loadBenchmarkReport(input)).toThrow(/JSON depth/);
+  });
 });
 
 function runRecord(overrides: Partial<AgentRunRecord>): AgentRunRecord {
@@ -178,4 +186,12 @@ function makeTempRoot(prefix: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(root);
   return root;
+}
+
+function nestedJson(depth: number): string {
+  let value = "\"leaf\"";
+  for (let index = 0; index < depth; index += 1) {
+    value = `{"child":${value}}`;
+  }
+  return value;
 }

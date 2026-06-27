@@ -1,5 +1,5 @@
-import fs from "node:fs";
 import { EVALUATION_QUERY_SET_NAMES, evaluationCasesForQuerySet, type EvaluationCase } from "../evaluation/retrieval-eval.js";
+import { readBoundedJsonFile } from "../utils/bounded-json.js";
 import { normalizePath } from "../utils/text.js";
 
 export type AgentRunMode = "with_mdgraph" | "without_mdgraph";
@@ -103,7 +103,7 @@ export interface BenchmarkReport {
 }
 
 export function loadBenchmarkReport(filePath: string): BenchmarkReport {
-  return generateBenchmarkReport(parseAgentRunRecords(JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown));
+  return generateBenchmarkReport(parseAgentRunRecords(readBoundedJsonFile(filePath, "Benchmark input")));
 }
 
 export function parseAgentRunRecords(value: unknown): AgentRunRecord[] {

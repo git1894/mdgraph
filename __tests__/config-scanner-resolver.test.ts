@@ -36,6 +36,23 @@ describe("configuration loading", () => {
     expect(() => loadConfig(root)).toThrow(target);
     expect(() => loadConfig(root)).toThrow(/mdgraph init/);
   });
+
+  it("rejects resource-amplifying numeric config values above product limits", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-config-limits-"));
+    tempDirs.push(root);
+    const target = initConfig(root);
+
+    fs.writeFileSync(target, JSON.stringify({
+      index: { maxFileBytes: 10 * 1024 * 1024 + 1 },
+      search: { defaultLimit: 8 },
+      embedding: { dimensions: 128 }
+    }), "utf8");
+
+    expect(() => loadConfig(root)).toThrow(/index\.maxFileBytes.*at most 10485760/);
+
+    fs.writeFileSync(target, JSON.stringify({ embedding: { dimensions: 4097 } }), "utf8");
+    expect(() => loadConfig(root)).toThrow(/embedding\.dimensions.*at most 4096/);
+  });
 });
 
 describe("scanMarkdownFiles", () => {
@@ -110,6 +127,25 @@ describe("scanMarkdownFiles", () => {
 
     const relative = files.map((file) => path.relative(root, file).replace(/\\/g, "/")).sort();
     expect(relative).toEqual(["docs/component.mdx", "docs/included.md"]);
+  });
+
+  it("does not accept include glob matches outside the project root", async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-scan-contained-"));
+    tempDirs.push(parent);
+    const root = path.join(parent, "root");
+    const outside = path.join(parent, "outside");
+    fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(root, "docs", "included.md"), "# Included\n", "utf8");
+    fs.writeFileSync(path.join(outside, "leaked.md"), "# Outside\n", "utf8");
+
+    const files = await scanMarkdownFiles(root, {
+      ...DEFAULT_CONFIG,
+      docs: { include: ["docs/**/*.md", "../outside/*.md"], exclude: [] }
+    });
+
+    const relative = files.map((file) => path.relative(root, file).replace(/\\/g, "/")).sort();
+    expect(relative).toEqual(["docs/included.md"]);
   });
 });
 

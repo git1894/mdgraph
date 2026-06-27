@@ -44,6 +44,7 @@ export function buildGraphRecords(documents: ParsedDocument[], config: MDGraphCo
       updatedAt: undefined,
       indexedAt: now,
       metadata: {
+        declaredTrustTier: document.frontmatter.trust_tier,
         frontmatterId: document.frontmatter.id,
         tags: document.frontmatter.tags ?? []
       }

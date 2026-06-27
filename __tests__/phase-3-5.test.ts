@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import { evaluateRetrieval } from "../src/evaluation/retrieval-eval.js";
 import { indexProject } from "../src/indexer.js";
 import { ToolHandler } from "../src/mcp/tools.js";
 import { runDoctor } from "../src/analysis/doctor.js";
+import { collectDoctorScope } from "../src/analysis/doctor-scope.js";
 import { searchGraph } from "../src/query/search.js";
 import { semanticStatusReport } from "../src/semantic/status.js";
 import { decodeFloat32Vector } from "../src/semantic/vector-codec.js";
@@ -302,6 +304,35 @@ describe("phase 5 doctor", () => {
     expect(report.warnings.find((warning) => warning.code === "source_ref.missing")).toMatchObject({
       severity: "error",
       affectedNodes: [{ kind: "source_ref", path: "src/missing.ts" }]
+    });
+  });
+
+  it("reports source refs outside the project root without probing outside files", async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-source-root-"));
+    tempDirs.push(parent);
+    const root = path.join(parent, "root");
+    const sibling = path.join(parent, "sibling");
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.mkdirSync(sibling, { recursive: true });
+    fs.writeFileSync(path.join(sibling, "outside.ts"), "export const outside = true;\n", "utf8");
+    fs.writeFileSync(path.join(docsDir, "outside-ref.md"), [
+      "---",
+      "title: Outside Ref",
+      "source_refs:",
+      "  - ../sibling/outside.ts",
+      "---",
+      "# Outside Ref",
+      ""
+    ].join("\n"), "utf8");
+
+    await indexProject(root);
+    const report = await runDoctor(root);
+
+    expect(report.summary.staleSourceRefs).toBe(1);
+    expect(report.staleSourceRefs[0]).toMatchObject({
+      expectedPath: "outside project root",
+      sourceRef: { path: "../sibling/outside.ts" }
     });
   });
 
@@ -689,4 +720,24 @@ describe("phase 5 doctor", () => {
     expect(report.summary.possibleContradictions).toBe(1);
     expect(report.possibleContradictions.map((issue) => issue.entity.name)).toEqual(["SharedThing"]);
   });
+
+  it("rejects doctor --since refs that look like Git options", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-doctor-since-ref-"));
+    tempDirs.push(root);
+    runGit(root, ["init"]);
+    runGit(root, ["config", "user.email", "test@example.com"]);
+    runGit(root, ["config", "user.name", "Test User"]);
+    fs.writeFileSync(path.join(root, "README.md"), "# Project\n", "utf8");
+    runGit(root, ["add", "README.md"]);
+    runGit(root, ["commit", "-m", "init"]);
+
+    expect(() => collectDoctorScope(root, { mode: "since", baseRef: "--help" })).toThrow(/non-option Git ref/);
+  });
 });
+
+function runGit(cwd: string, args: string[]): void {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", windowsHide: true });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+  }
+}

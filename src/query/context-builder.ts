@@ -1,6 +1,7 @@
-import type { EdgeKind, GraphEdge, GraphEntity, MDGraphConfig, Provenance, SearchResult, SourceRef, TrustTier } from "../types.js";
+import type { EdgeKind, GraphDocument, GraphEdge, GraphEntity, MDGraphConfig, Provenance, SearchResult, SourceRef, TrustTier } from "../types.js";
 import { GraphRepository, type ChunkSearchRow, type NodeRecord } from "../db/repositories.js";
 import { searchGraph, type SearchOptions } from "./search.js";
+import { scanContentRiskLines } from "../utils/content-risk.js";
 import { normalizePath, uniqueStrings } from "../utils/text.js";
 
 const DEFAULT_MAX_CONTEXT_NODES = 16;
@@ -67,6 +68,7 @@ interface ContextCandidate extends ContextItem {
   documentId: string;
   documentStatus: string;
   trustTier: TrustTier;
+  trustTierDeclared: boolean;
   score: number;
   direct: boolean;
 }
@@ -206,6 +208,7 @@ function candidateFromKnownRow(row: ChunkSearchRow, reason: string, index: numbe
     documentId: row.document.id,
     documentStatus: row.document.status,
     trustTier: row.document.trustTier,
+    trustTierDeclared: hasDeclaredTrustTier(row.document),
     score: 10_000 - index,
     direct: true
   };
@@ -322,6 +325,7 @@ function collectContextCandidates(
           documentId: row.document.id,
           documentStatus: row.document.status,
           trustTier: row.document.trustTier,
+          trustTierDeclared: hasDeclaredTrustTier(row.document),
           score,
           direct: false
         });
@@ -388,6 +392,13 @@ function riskNotesForCandidate(candidate: ContextCandidate): string[] {
   }
   if (candidate.trustTier !== "authored" && candidate.trustTier !== "validated") {
     notes.push(`trust tier: ${candidate.trustTier}`);
+  }
+  if (candidate.trustTier === "validated" && candidate.trustTierDeclared) {
+    notes.push("trust tier: validated (front matter declared)");
+  }
+  for (const risk of scanContentRiskLines(candidate.content).slice(0, 3)) {
+    const line = candidate.lines ? candidate.lines.start + risk.line - 1 : risk.line;
+    notes.push(`content risk: ${risk.reason} at line ${line}`);
   }
   return notes;
 }
@@ -480,6 +491,7 @@ function candidateFromSearchResult(result: SearchResult): ContextCandidate {
     documentId: result.document.id,
     documentStatus: result.document.status,
     trustTier: result.document.trustTier,
+    trustTierDeclared: hasDeclaredTrustTier(result.document),
     score: result.score,
     direct: true
   };
@@ -531,4 +543,8 @@ function trimToBudget(content: string, maxChars: number): string {
     return content.slice(0, maxChars);
   }
   return `${content.slice(0, maxChars - 3).trimEnd()}...`.slice(0, maxChars);
+}
+
+function hasDeclaredTrustTier(document: Pick<GraphDocument, "metadata">): boolean {
+  return typeof document.metadata?.declaredTrustTier === "string";
 }

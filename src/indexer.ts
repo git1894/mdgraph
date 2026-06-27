@@ -5,12 +5,15 @@ import { buildGraphRecords } from "./extraction/graph-builder.js";
 import { parseMarkdownDocument } from "./parser/markdown-parser.js";
 import { scanMarkdownFiles } from "./scanner/file-scanner.js";
 import type { GraphRecordSet, MDGraphConfig } from "./types.js";
+import { relativePathInsideRoot } from "./utils/path-safety.js";
 
 export interface IndexResult {
   files: number;
   changed: number;
   deleted: number;
   unchanged: number;
+  skipped: number;
+  skippedFiles: Array<{ path: string; reason: string }>;
   mode: "full" | "incremental";
   counts: StatusCounts;
 }
@@ -23,18 +26,27 @@ export interface IndexOptions {
 export async function indexProject(projectRoot: string, options: IndexOptions = {}): Promise<IndexResult> {
   const config = effectiveConfig(loadConfig(projectRoot), options);
   const files = await scanMarkdownFiles(projectRoot, config);
-  const parsed = files.map((file) => parseMarkdownDocument(projectRoot, file));
+  const { parsed, skippedFiles } = parseScannedFiles(projectRoot, files);
   const records = buildGraphRecords(parsed, config);
   const db = openDatabase(projectRoot);
   try {
     const repository = new GraphRepository(db);
     if (options.full || repository.counts().documents === 0) {
       repository.replaceAll(records);
-      return { files: files.length, changed: files.length, deleted: 0, unchanged: 0, mode: "full", counts: repository.counts() };
+      return {
+        files: files.length,
+        changed: parsed.length,
+        deleted: 0,
+        unchanged: 0,
+        skipped: skippedFiles.length,
+        skippedFiles,
+        mode: "full",
+        counts: repository.counts()
+      };
     }
 
     const existing = repository.documentHashes();
-    const currentPaths = new Set(parsed.map((document) => document.relativePath));
+    const currentPaths = new Set(files.map((file) => relativePathInsideRoot(projectRoot, file)).filter((value): value is string => Boolean(value)));
     const changedDocuments = parsed.filter((document) => existing.get(document.relativePath)?.hash !== document.hash);
     const deletedDocumentIds = [...existing.entries()]
       .filter(([documentPath]) => !currentPaths.has(documentPath))
@@ -51,13 +63,34 @@ export async function indexProject(projectRoot: string, options: IndexOptions = 
       files: files.length,
       changed: changedDocuments.length,
       deleted: deletedDocumentIds.length,
-      unchanged: files.length - changedDocuments.length,
+      unchanged: files.length - changedDocuments.length - skippedFiles.length,
+      skipped: skippedFiles.length,
+      skippedFiles,
       mode: "incremental",
       counts: repository.counts()
     };
   } finally {
     db.close();
   }
+}
+
+function parseScannedFiles(projectRoot: string, files: string[]): {
+  parsed: ReturnType<typeof parseMarkdownDocument>[];
+  skippedFiles: IndexResult["skippedFiles"];
+} {
+  const parsed: ReturnType<typeof parseMarkdownDocument>[] = [];
+  const skippedFiles: IndexResult["skippedFiles"] = [];
+  for (const file of files) {
+    try {
+      parsed.push(parseMarkdownDocument(projectRoot, file));
+    } catch (error) {
+      skippedFiles.push({
+        path: relativePathInsideRoot(projectRoot, file) ?? file,
+        reason: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  return { parsed, skippedFiles };
 }
 
 function effectiveConfig(config: MDGraphConfig, options: IndexOptions): MDGraphConfig {

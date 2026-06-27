@@ -6,7 +6,8 @@ This document records the stable top-level JSON shapes for the current CLI surfa
 
 `mdgraph index --json` returns an object with:
 
-- `files`, `changed`, `deleted`, `unchanged`: numeric indexing counters.
+- `files`, `changed`, `deleted`, `unchanged`, `skipped`: numeric indexing counters.
+- `skippedFiles`: skipped Markdown files with project-relative `path` and `reason` when a file cannot be parsed inside resource budgets.
 - `mode`: `full` or `incremental`.
 - `counts`: graph counts with `documents`, `sections`, `entities`, `sourceRefs`, `edges`, `chunks`, and `vectors`.
 
@@ -56,7 +57,9 @@ If no index exists, it returns:
 - `query`: original query text.
 - `maxChars`: configured context budget.
 - `usedChars`: packed character count.
-- `items`: context items with `path`, `title`, optional `heading`, optional `lines`, `reason`, `matchedEntities`, and `content`.
+- `items`: context items with `path`, `title`, optional `heading`, optional `lines`, `reason`, `matchedEntities`, optional `sourceRefs`, optional `riskNotes`, and `content`.
+
+`riskNotes` can include lifecycle/trust cautions and deterministic content-risk notes such as prompt-injection text, active HTML/data URIs, or hidden Unicode format characters.
 
 `mdgraph context <query> --debug --json` keeps the same fields and adds `debug` with:
 
@@ -124,7 +127,7 @@ The structural profile excludes chunks, chunk content, section content, vectors,
 - `warnings`: non-fatal compatibility notes.
 - `format`, `formatVersion`, `schemaVersion`, `graphHash`, `counts`, and `exportedCounts` when readable.
 
-The command exits non-zero when `valid` is `false`. GraphJSON merge import is not supported in 0.7.
+The command exits non-zero when `valid` is `false`. GraphJSON merge import is not supported in 0.7. Oversized or deeply nested GraphJSON files are rejected before verification.
 
 ## `export mermaid trace --json`
 
@@ -158,7 +161,7 @@ Without `--json`, the command prints only Mermaid text. The diagram renders exis
 - `reason`: unsupported/skipped reason when available.
 - `sourceRefs`, `matched`, and `unmatched`.
 
-The bridge reads only an explicit local CodeGraph-style JSON artifact. It does not create graph edges and does not affect indexing, search, context, or MCP tools.
+The bridge reads only an explicit local CodeGraph-style JSON artifact and rejects oversized or deeply nested JSON before matching. It does not create graph edges and does not affect indexing, search, context, or MCP tools.
 
 ## `bundle create --json`
 

@@ -105,7 +105,7 @@ When requested through `context --debug`, context building also reports seed nod
 
 ## MCP Boundary
 
-The MCP server intentionally exposes only five tools. Tool output is text-first and JSON-compatible so agents can use it without needing to inspect the SQLite database or read raw files first.
+The MCP server intentionally exposes only five tools. Tool output is text-first and JSON-compatible so agents can use it without needing to inspect the SQLite database or read raw files first. The server is project-bound: initialize roots and tool `projectPath` values must stay inside the served root.
 
 ## Current Tradeoffs
 

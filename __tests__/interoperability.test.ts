@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openExistingDatabase } from "../src/db/connection.js";
 import { GraphRepository } from "../src/db/repositories.js";
 import { buildMermaidTraceExport, formatTraceMermaid } from "../src/export/diagram.js";
-import { buildGraphJsonExport, graphJsonHash, verifyGraphJsonExport } from "../src/export/graphjson.js";
+import { buildGraphJsonExport, graphJsonHash, readGraphJsonFile, verifyGraphJsonExport } from "../src/export/graphjson.js";
 import { buildDocsSiteIndex, formatObsidianMarkdownIndex } from "../src/export/markdown-index.js";
 import { buildCodeGraphBridgeReport } from "../src/export/source-bridge.js";
 import { indexProject } from "../src/indexer.js";
@@ -85,6 +85,14 @@ describe("v0.7 interoperability exports", () => {
     }
   });
 
+  it("rejects GraphJSON files that exceed JSON structure budgets", () => {
+    const root = makeTempRoot("mdgraph-graphjson-budget-");
+    const file = path.join(root, "deep.json");
+    fs.writeFileSync(file, nestedJson(130), "utf8");
+
+    expect(() => readGraphJsonFile(file)).toThrow(/JSON depth/);
+  });
+
   it("exports deterministic Mermaid trace diagrams and no-path comments", async () => {
     const root = makeTempRoot("mdgraph-mermaid-");
     createFixtureDocs(root);
@@ -155,6 +163,12 @@ describe("v0.7 interoperability exports", () => {
       expect(invalid.status).toBe("unsupported");
       expect(invalid.reason).toContain("could not be parsed");
 
+      const deepArtifactPath = path.join(root, "deep-codegraph.json");
+      fs.writeFileSync(deepArtifactPath, nestedJson(130), "utf8");
+      const deep = buildCodeGraphBridgeReport(repository, { artifact: deepArtifactPath });
+      expect(deep.status).toBe("unsupported");
+      expect(deep.reason).toContain("JSON depth");
+
       const report = buildCodeGraphBridgeReport(repository, { artifact: artifactPath });
       expect(report.status).toBe("ready");
       expect(report.matched).toEqual([{
@@ -173,4 +187,12 @@ function makeTempRoot(prefix: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(root);
   return root;
+}
+
+function nestedJson(depth: number): string {
+  let value = "\"leaf\"";
+  for (let index = 0; index < depth; index += 1) {
+    value = `{"child":${value}}`;
+  }
+  return value;
 }

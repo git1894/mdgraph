@@ -57,11 +57,9 @@ describe("MCPServer", () => {
 
   it("uses initialize rootUri as the default project root for later tool calls", async () => {
     const serverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-server-root-"));
-    const initializedRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-initialized-root-"));
-    tempDirs.push(serverRoot, initializedRoot);
-    createSingleDoc(serverRoot, "server.md", "ServerService");
+    const initializedRoot = path.join(serverRoot, "workspace");
+    tempDirs.push(serverRoot);
     createSingleDoc(initializedRoot, "initialized.md", "InitializedService");
-    await indexProject(serverRoot);
     await indexProject(initializedRoot);
 
     const transport = new FakeTransport();
@@ -77,16 +75,13 @@ describe("MCPServer", () => {
     });
 
     expect(JSON.stringify(transport.responses[1].result)).toContain("initialized.md");
-    expect(JSON.stringify(transport.responses[1].result)).not.toContain("server.md");
   });
 
   it("uses workspaceFolders as initialize root when rootUri is absent", async () => {
     const serverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-server-folder-root-"));
-    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-workspace-root-"));
-    tempDirs.push(serverRoot, workspaceRoot);
-    createSingleDoc(serverRoot, "server.md", "ServerService");
+    const workspaceRoot = path.join(serverRoot, "workspace");
+    tempDirs.push(serverRoot);
     createSingleDoc(workspaceRoot, "workspace.md", "WorkspaceService");
-    await indexProject(serverRoot);
     await indexProject(workspaceRoot);
 
     const transport = new FakeTransport();
@@ -102,6 +97,24 @@ describe("MCPServer", () => {
     });
 
     expect(JSON.stringify(transport.responses[1].result)).toContain("workspace.md");
+  });
+
+  it("rejects initialize roots outside the served project root", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-bound-root-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-mcp-outside-root-"));
+    tempDirs.push(root, outside);
+    createFixtureDocs(root);
+    createFixtureDocs(outside);
+    await indexProject(root);
+    await indexProject(outside);
+
+    const transport = new FakeTransport();
+    const server = new MCPServer(transport, { projectRoot: root });
+    server.start();
+
+    await transport.receive({ jsonrpc: "2.0", id: 1, method: "initialize", params: { rootUri: pathToFileUri(outside) } });
+
+    expect(transport.responses[0].error).toMatchObject({ code: -32602 });
   });
 
   it("rejects invalid initialize roots instead of silently falling back", async () => {

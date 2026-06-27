@@ -3,8 +3,10 @@ import path from "node:path";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
+import { PARSER_LIMITS } from "../config/limits.js";
 import type { CodeSnippet, MarkdownLink, ParsedDocument, ParsedSection, WikiLink } from "../types.js";
 import { contentHash, stableId } from "../utils/id.js";
+import { assertInsideRoot } from "../utils/path-safety.js";
 import { relativeUnixPath, slugifyHeading } from "../utils/text.js";
 import { normalizeFrontmatter, parseFrontmatterBlock } from "./frontmatter.js";
 import { parseWikiLinkTarget } from "./links.js";
@@ -38,6 +40,7 @@ interface LineRange {
 }
 
 export function parseMarkdownDocument(projectRoot: string, absolutePath: string): ParsedDocument {
+  assertInsideRoot(projectRoot, absolutePath, "Markdown file path");
   const raw = fs.readFileSync(absolutePath, "utf8");
   const parsed = parseFrontmatter(raw);
   const body = parsed.content;
@@ -280,10 +283,21 @@ function firstH1(headings: HeadingInfo[]): string | undefined {
 }
 
 function textOf(node: MdastNode): string {
-  if (typeof node.value === "string") {
-    return node.value;
+  let text = "";
+  let visited = 0;
+  const stack: Array<{ node: MdastNode; depth: number }> = [{ node, depth: 0 }];
+  while (stack.length) {
+    const current = stack.pop()!;
+    assertTraversalBudget(++visited, current.depth);
+    if (typeof current.node.value === "string") {
+      text += current.node.value;
+    }
+    const children = current.node.children ?? [];
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push({ node: children[index], depth: current.depth + 1 });
+    }
   }
-  return (node.children ?? []).map(textOf).join("").trim();
+  return text.trim();
 }
 
 function findSectionId(sections: ParsedSection[], line: number): string | undefined {
@@ -291,8 +305,24 @@ function findSectionId(sections: ParsedSection[], line: number): string | undefi
 }
 
 function visit(node: MdastNode, callback: (node: MdastNode) => void): void {
-  callback(node);
-  for (const child of node.children ?? []) {
-    visit(child, callback);
+  let visited = 0;
+  const stack: Array<{ node: MdastNode; depth: number }> = [{ node, depth: 0 }];
+  while (stack.length) {
+    const current = stack.pop()!;
+    assertTraversalBudget(++visited, current.depth);
+    callback(current.node);
+    const children = current.node.children ?? [];
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push({ node: children[index], depth: current.depth + 1 });
+    }
+  }
+}
+
+function assertTraversalBudget(nodes: number, depth: number): void {
+  if (nodes > PARSER_LIMITS.maxAstNodes) {
+    throw new Error(`Markdown AST exceeds node budget (${PARSER_LIMITS.maxAstNodes}).`);
+  }
+  if (depth > PARSER_LIMITS.maxAstDepth) {
+    throw new Error(`Markdown AST exceeds depth budget (${PARSER_LIMITS.maxAstDepth}).`);
   }
 }

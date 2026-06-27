@@ -5,6 +5,7 @@ import { ErrorCodes, StdioTransport, type JsonRpcNotification, type JsonRpcReque
 import { SERVER_INSTRUCTIONS, SERVER_INSTRUCTIONS_UNINDEXED } from "./server-instructions.js";
 import { McpInputError, ToolHandler, hasIndex, tools } from "./tools.js";
 import { packageVersion } from "../version.js";
+import { isPathInsideOrEqual } from "../utils/path-safety.js";
 
 export const PROTOCOL_VERSION = "2024-11-05";
 
@@ -13,12 +14,14 @@ export interface MCPServerOptions {
 }
 
 export class MCPServer {
+  private readonly boundProjectRoot: string;
   private projectRoot: string;
   private toolHandler: ToolHandler;
 
   constructor(private readonly transport: JsonRpcTransport, options: MCPServerOptions = {}) {
-    this.projectRoot = path.resolve(options.projectRoot ?? process.cwd());
-    this.toolHandler = new ToolHandler(this.projectRoot);
+    this.boundProjectRoot = validatedProjectRoot(path.resolve(options.projectRoot ?? process.cwd()));
+    this.projectRoot = this.boundProjectRoot;
+    this.toolHandler = new ToolHandler(this.projectRoot, this.boundProjectRoot);
   }
 
   start(): void {
@@ -81,12 +84,15 @@ export class MCPServer {
     let projectRoot: string;
     try {
       projectRoot = validatedProjectRoot(projectRootFromInitialize(request.params) ?? this.projectRoot);
+      if (!isPathInsideOrEqual(this.boundProjectRoot, projectRoot)) {
+        throw new Error(`Initialize root must stay inside served project root: ${this.boundProjectRoot}`);
+      }
     } catch (error) {
       this.transport.sendError(request.id, ErrorCodes.InvalidParams, error instanceof Error ? error.message : String(error));
       return;
     }
     this.projectRoot = projectRoot;
-    this.toolHandler = new ToolHandler(projectRoot);
+    this.toolHandler = new ToolHandler(projectRoot, this.boundProjectRoot);
     this.transport.sendResult(request.id, {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: {} },

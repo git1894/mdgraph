@@ -6,6 +6,14 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.7.1 - 2026-06-27
+
+### Fixed
+
+- Bounded resource-amplifying config, MCP, parser, JSON artifact, and stdio JSON-RPC inputs to prevent local denial-of-service from oversized values or deeply nested payloads.
+- Bound scanner matches, parser file reads, MCP initialize/tool project roots, and doctor source-ref checks to the served/project root.
+- Added MCP context content-risk notes so prompt-injection text, active HTML/data URIs, and hidden Unicode are surfaced even when a document declares `trust_tier: validated`.
+
 ## 0.7.0 - 2026-06-26
 
 ### Added

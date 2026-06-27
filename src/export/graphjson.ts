@@ -1,8 +1,8 @@
-import fs from "node:fs";
 import { canonicalJson, hashCanonical, sourceSnapshot } from "../bundle/bundle.js";
 import { loadConfig } from "../config/load-config.js";
 import type { GraphRepository, StatusCounts } from "../db/repositories.js";
 import type { EdgeKind, Provenance } from "../types.js";
+import { readBoundedJsonFile } from "../utils/bounded-json.js";
 import { packageVersion } from "../version.js";
 
 export const GRAPHJSON_FORMAT = "mdgraph-graphjson" as const;
@@ -203,7 +203,7 @@ export function buildGraphJsonExport(projectRoot: string, repository: GraphRepos
 }
 
 export function readGraphJsonFile(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+  return readBoundedJsonFile(filePath, "GraphJSON file");
 }
 
 export function verifyGraphJsonExport(value: unknown): GraphJsonVerificationResult {

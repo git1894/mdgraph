@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { EntityKind, MDGraphConfig } from "../types.js";
+import { CONFIG_LIMITS } from "./limits.js";
 
 const defaultEnabledKinds: EntityKind[] = [
   "symbol",
@@ -103,15 +104,17 @@ function mergeConfig(base: MDGraphConfig, override: Partial<MDGraphConfig>): MDG
     index: {
       parseMdx: boolOr(override.index?.parseMdx, base.index.parseMdx),
       followGitignore: boolOr(override.index?.followGitignore, base.index.followGitignore),
-      maxFileBytes: positiveNumberOr(override.index?.maxFileBytes, base.index.maxFileBytes)
+      maxFileBytes: boundedPositiveInteger(override.index?.maxFileBytes, base.index.maxFileBytes, "index.maxFileBytes", CONFIG_LIMITS.indexMaxFileBytes)
     },
     search: {
-      defaultLimit: positiveNumberOr(override.search?.defaultLimit, base.search.defaultLimit),
-      maxDepth: positiveNumberOr(override.search?.maxDepth, base.search.maxDepth),
-      maxContextChars: positiveNumberOr(override.search?.maxContextChars, base.search.maxContextChars),
-      highFrequencyEntityThreshold: positiveNumberOr(
+      defaultLimit: boundedPositiveInteger(override.search?.defaultLimit, base.search.defaultLimit, "search.defaultLimit", CONFIG_LIMITS.searchDefaultLimit),
+      maxDepth: boundedPositiveInteger(override.search?.maxDepth, base.search.maxDepth, "search.maxDepth", CONFIG_LIMITS.searchMaxDepth),
+      maxContextChars: boundedPositiveInteger(override.search?.maxContextChars, base.search.maxContextChars, "search.maxContextChars", CONFIG_LIMITS.searchMaxContextChars),
+      highFrequencyEntityThreshold: boundedPositiveInteger(
         override.search?.highFrequencyEntityThreshold,
-        base.search.highFrequencyEntityThreshold
+        base.search.highFrequencyEntityThreshold,
+        "search.highFrequencyEntityThreshold",
+        CONFIG_LIMITS.searchHighFrequencyEntityThreshold
       )
     },
     entities: {
@@ -122,7 +125,7 @@ function mergeConfig(base: MDGraphConfig, override: Partial<MDGraphConfig>): MDG
       enabled: boolOr(override.embedding?.enabled, base.embedding.enabled),
       provider: stringOr(override.embedding?.provider, base.embedding.provider),
       model: stringOr(override.embedding?.model, base.embedding.model),
-      dimensions: positiveNumberOr(override.embedding?.dimensions, base.embedding.dimensions)
+      dimensions: boundedPositiveInteger(override.embedding?.dimensions, base.embedding.dimensions, "embedding.dimensions", CONFIG_LIMITS.embeddingDimensions)
     }
   };
 }
@@ -135,8 +138,14 @@ function nonEmptyStringArray(value: unknown, fallback: string[]): string[] {
   return result.length ? result : fallback;
 }
 
-function positiveNumberOr(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+function boundedPositiveInteger(value: unknown, fallback: number, field: string, max: number): number {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > max) {
+    throw new Error(`Invalid MDGraph config: ${field} must be a positive integer at most ${max}.`);
+  }
+  return value;
 }
 
 function boolOr(value: unknown, fallback: boolean): boolean {

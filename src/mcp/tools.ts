@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { MCP_LIMITS } from "../config/limits.js";
 import { databasePath, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeRecord, type NodeResolution, type StatusCounts } from "../db/repositories.js";
@@ -8,6 +9,7 @@ import { searchGraph } from "../query/search.js";
 import { traceNodes, type TraceResult } from "../query/trace.js";
 import { scanMarkdownFilesSync } from "../scanner/file-scanner.js";
 import type { MDGraphConfig, SearchResult } from "../types.js";
+import { isPathInsideOrEqual } from "../utils/path-safety.js";
 import { normalizePath } from "../utils/text.js";
 
 export interface McpToolDefinition {
@@ -42,7 +44,7 @@ export const tools: McpToolDefinition[] = [
       properties: {
         query: { type: "string", description: "Search query, keyword, or entity name." },
         limit: { type: "number", description: "Maximum result count." },
-        projectPath: { type: "string", description: "Optional project root. Defaults to server cwd." }
+        projectPath: { type: "string", description: "Optional project root inside the served root. Defaults to server cwd." }
       }
     }
   },
@@ -61,7 +63,7 @@ export const tools: McpToolDefinition[] = [
           description: "Optional known project-relative document or source paths to seed the task-start brief."
         },
         maxChars: { type: "number", description: "Optional character budget for the returned context package." },
-        projectPath: { type: "string", description: "Optional project root. Defaults to server cwd." }
+        projectPath: { type: "string", description: "Optional project root inside the served root. Defaults to server cwd." }
       }
     }
   },
@@ -74,7 +76,7 @@ export const tools: McpToolDefinition[] = [
       required: ["query"],
       properties: {
         query: { type: "string", description: "Document title/path, entity name, source path, or graph node id." },
-        projectPath: { type: "string", description: "Optional project root. Defaults to server cwd." }
+        projectPath: { type: "string", description: "Optional project root inside the served root. Defaults to server cwd." }
       }
     }
   },
@@ -89,7 +91,7 @@ export const tools: McpToolDefinition[] = [
         from: { type: "string", description: "Start document, entity, source path, or node id." },
         to: { type: "string", description: "End document, entity, source path, or node id." },
         depth: { type: "number", description: "Maximum graph depth. Defaults to 6." },
-        projectPath: { type: "string", description: "Optional project root. Defaults to server cwd." }
+        projectPath: { type: "string", description: "Optional project root inside the served root. Defaults to server cwd." }
       }
     }
   },
@@ -100,21 +102,30 @@ export const tools: McpToolDefinition[] = [
       type: "object",
       additionalProperties: false,
       properties: {
-        projectPath: { type: "string", description: "Optional project root. Defaults to server cwd." }
+        projectPath: { type: "string", description: "Optional project root inside the served root. Defaults to server cwd." }
       }
     }
   }
 ];
 
 export class ToolHandler {
-  constructor(private readonly defaultProjectRoot = process.cwd()) {}
+  private readonly defaultProjectRoot: string;
+  private readonly boundProjectRoot: string;
+
+  constructor(defaultProjectRoot = process.cwd(), boundProjectRoot = defaultProjectRoot) {
+    this.boundProjectRoot = validatedProjectRoot(path.resolve(boundProjectRoot));
+    this.defaultProjectRoot = validatedProjectRoot(path.resolve(defaultProjectRoot));
+    if (!isPathInsideOrEqual(this.boundProjectRoot, this.defaultProjectRoot)) {
+      throw new McpInputError(`Default project root must stay inside served root: ${this.boundProjectRoot}`);
+    }
+  }
 
   getTools(): McpToolDefinition[] {
     return tools;
   }
 
   execute(name: string, args: Record<string, unknown> = {}): McpToolResult {
-    const projectRoot = resolveProjectRoot(args.projectPath, this.defaultProjectRoot);
+    const projectRoot = resolveProjectRoot(args.projectPath, this.defaultProjectRoot, this.boundProjectRoot);
 
     if (name === "mdgraph_status") {
       if (!hasIndex(projectRoot)) {
@@ -140,7 +151,7 @@ export class ToolHandler {
           const counts = repository.counts();
           const hasManualLimit = args.limit !== undefined && args.limit !== null;
           const autoMode = agentSearchMode(config, counts, query);
-          const limit = hasManualLimit ? optionalPositiveInteger(args.limit, config.search.defaultLimit) : autoMode.limit;
+          const limit = hasManualLimit ? optionalBoundedPositiveInteger(args.limit, config.search.defaultLimit, "limit", MCP_LIMITS.searchLimit) : autoMode.limit;
           const results = searchGraph(repository, config, query, limit);
           const mode = hasManualLimit ? { name: "manual" as const, limit, reason: "explicit limit argument" } : autoMode;
           return textResult(formatSearch(results), { projectRoot, query, mode, results });
@@ -151,7 +162,7 @@ export class ToolHandler {
           const query = requiredString(args.query, "query");
           const knownFiles = optionalStringArray(args.knownFiles, "knownFiles");
           const hasManualMaxChars = args.maxChars !== undefined && args.maxChars !== null;
-          const requestedMaxChars = optionalBoundedPositiveInteger(args.maxChars, config.search.maxContextChars, "maxChars", 200_000);
+          const requestedMaxChars = optionalBoundedPositiveInteger(args.maxChars, config.search.maxContextChars, "maxChars", MCP_LIMITS.contextMaxChars);
           const mode = agentContextMode(config, repository.counts(), query, knownFiles, hasManualMaxChars ? requestedMaxChars : undefined);
           const context = buildContext(repository, config, query, {
             knownFiles,
@@ -178,7 +189,7 @@ export class ToolHandler {
         return this.withRepository(projectRoot, (repository) => {
           const from = requiredString(args.from, "from");
           const to = requiredString(args.to, "to");
-          const depth = optionalPositiveInteger(args.depth, 6);
+          const depth = optionalBoundedPositiveInteger(args.depth, 6, "depth", MCP_LIMITS.traceDepth);
           const trace = traceNodes(repository, from, to, depth);
           return textResult(formatTrace(trace), { projectRoot, trace });
         });
@@ -417,14 +428,14 @@ function formatTraceStep(step: TraceResult["steps"][number]): string {
     : `${step.fromLabel} <--${edge}-- ${step.toLabel}`;
 }
 
-function resolveProjectRoot(rawProjectPath: unknown, fallback: string): string {
+function resolveProjectRoot(rawProjectPath: unknown, fallback: string, boundProjectRoot: string): string {
   if (rawProjectPath === undefined || rawProjectPath === null || rawProjectPath === "") {
-    return validatedProjectRoot(path.resolve(fallback));
+    return validatedBoundProjectRoot(path.resolve(fallback), boundProjectRoot);
   }
   if (typeof rawProjectPath !== "string") {
     throw new McpInputError("projectPath must be a string when provided");
   }
-  return validatedProjectRoot(path.resolve(rawProjectPath));
+  return validatedBoundProjectRoot(path.resolve(rawProjectPath), boundProjectRoot);
 }
 
 function validatedProjectRoot(projectRoot: string): string {
@@ -436,6 +447,14 @@ function validatedProjectRoot(projectRoot: string): string {
     throw new McpInputError(`Project root is not a directory: ${projectRoot}`);
   }
   return projectRoot;
+}
+
+function validatedBoundProjectRoot(projectRoot: string, boundProjectRoot: string): string {
+  const resolved = validatedProjectRoot(projectRoot);
+  if (!isPathInsideOrEqual(boundProjectRoot, resolved)) {
+    throw new McpInputError(`projectPath must stay inside served project root: ${boundProjectRoot}`);
+  }
+  return resolved;
 }
 
 function requiredString(value: unknown, field: string): string {

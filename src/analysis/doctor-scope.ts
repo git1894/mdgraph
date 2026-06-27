@@ -26,8 +26,9 @@ export function collectDoctorScope(projectRoot: string, request: DoctorScopeRequ
     return scopeFromParts("changed", undefined, mergeNameStatus(unstaged, staged), untrackedPaths);
   }
 
-  const diff = parseNameStatus(runGit(projectRoot, ["diff", "--name-status", "-M", `${request.baseRef}...HEAD`, "--", "."]));
-  return scopeFromParts("since", request.baseRef, diff, []);
+  const baseRef = validateBaseRef(request.baseRef);
+  const diff = parseNameStatus(runGit(projectRoot, ["diff", "--name-status", "-M", "--end-of-options", `${baseRef}...HEAD`, "--", "."]));
+  return scopeFromParts("since", baseRef, diff, []);
 }
 
 function scopeFromParts(mode: DoctorScope["mode"], baseRef: string | undefined, parsed: ParsedNameStatus, untrackedPaths: string[]): DoctorScope {
@@ -98,6 +99,14 @@ function ensureGitWorktree(projectRoot: string): void {
 
 function ensureGitHead(projectRoot: string): void {
   runGit(projectRoot, ["rev-parse", "--verify", "HEAD"]);
+}
+
+function validateBaseRef(baseRef: string): string {
+  const trimmed = baseRef.trim();
+  if (!trimmed || trimmed.startsWith("-") || /[\s\0]/u.test(trimmed)) {
+    throw new Error("doctor --since requires a non-option Git ref without whitespace.");
+  }
+  return trimmed;
 }
 
 function runGit(projectRoot: string, args: string[]): string {

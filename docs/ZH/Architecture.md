@@ -105,7 +105,7 @@ Diff report 包含 Markdown 文档新增、修改、删除、Git 识别的 renam
 
 ## MCP 边界
 
-MCP 服务器有意仅暴露五个工具。工具输出以文本为主且兼容 JSON，以便代理可以直接使用，无需先检查 SQLite 数据库或读取原始文件。
+MCP 服务器有意仅暴露五个工具。工具输出以文本为主且兼容 JSON，以便代理可以直接使用，无需先检查 SQLite 数据库或读取原始文件。服务器会绑定到项目根：initialize root 和工具 `projectPath` 必须位于服务根之内。
 
 ## 当前权衡
 

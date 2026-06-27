@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { indexProject } from "../src/indexer.js";
 import { parseMarkdownDocument } from "../src/parser/markdown-parser.js";
 
 let tempDirs: string[] = [];
@@ -218,5 +219,23 @@ describe("parseMarkdownDocument", () => {
     const after = parseMarkdownDocument(root, file).sections.map((section) => section.id);
 
     expect(after).toEqual(before);
+  });
+
+  it("rejects Markdown ASTs beyond parser budgets without crashing indexing", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-parser-budget-"));
+    tempDirs.push(root);
+    const docsDir = path.join(root, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    const badFile = path.join(docsDir, "too-many-nodes.md");
+    const goodFile = path.join(docsDir, "ok.md");
+    fs.writeFileSync(badFile, Array.from({ length: 10_001 }, () => "#").join("\n"), "utf8");
+    fs.writeFileSync(goodFile, "# OK\n", "utf8");
+
+    expect(() => parseMarkdownDocument(root, badFile)).toThrow(/Markdown AST exceeds .* budget/);
+
+    const result = await indexProject(root);
+    expect(result.skipped).toBe(1);
+    expect(result.skippedFiles[0]).toMatchObject({ path: "docs/too-many-nodes.md" });
+    expect(result.counts.documents).toBe(1);
   });
 });

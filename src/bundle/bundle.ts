@@ -7,6 +7,7 @@ import { createDatabase } from "../db/sqlite-adapter.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type StatusCounts } from "../db/repositories.js";
 import type { MDGraphConfig } from "../types.js";
+import { readBoundedJsonFile } from "../utils/bounded-json.js";
 import { packageVersion } from "../version.js";
 
 export type BundleVisibility = "private";
@@ -345,7 +346,7 @@ function isDocumentSummary(value: unknown): value is GraphBundleManifest["docume
 }
 
 function readJsonFile(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+  return readBoundedJsonFile(filePath, "Bundle JSON file");
 }
 
 function writeJson(filePath: string, value: unknown): void {

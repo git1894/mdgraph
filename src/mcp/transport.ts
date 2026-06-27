@@ -1,5 +1,6 @@
 import readline from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import { MCP_LIMITS } from "../config/limits.js";
 
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -72,6 +73,10 @@ export class StdioTransport implements JsonRpcTransport {
   }
 
   private async handleLine(line: string): Promise<void> {
+    if (Buffer.byteLength(line, "utf8") > MCP_LIMITS.jsonRpcLineBytes) {
+      this.sendError(null, ErrorCodes.ParseError, `Parse error: JSON-RPC line exceeds ${MCP_LIMITS.jsonRpcLineBytes} bytes`);
+      return;
+    }
     const trimmed = line.trim();
     if (!trimmed) {
       return;

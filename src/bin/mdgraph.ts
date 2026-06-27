@@ -52,7 +52,7 @@ program
     printResult(
       options.json,
       result,
-      `Indexed ${result.files} file(s) in ${result.mode} mode. Changed: ${result.changed}, deleted: ${result.deleted}, unchanged: ${result.unchanged}. Documents: ${result.counts.documents}, entities: ${result.counts.entities}, edges: ${result.counts.edges}.`
+      `Indexed ${result.files} file(s) in ${result.mode} mode. Changed: ${result.changed}, deleted: ${result.deleted}, unchanged: ${result.unchanged}, skipped: ${result.skipped}. Documents: ${result.counts.documents}, entities: ${result.counts.entities}, edges: ${result.counts.edges}.`
     );
   });
 
@@ -415,7 +415,7 @@ program
       semantic: options.semantic,
       debounceMs: options.debounce,
       onIndexed: (result) => {
-        console.error(`Indexed ${result.changed} changed, ${result.deleted} deleted, ${result.unchanged} unchanged document(s).`);
+        console.error(`Indexed ${result.changed} changed, ${result.deleted} deleted, ${result.unchanged} unchanged, ${result.skipped} skipped document(s).`);
       },
       onError: (error) => {
         console.error(`Watch indexing failed: ${error.message}`);
