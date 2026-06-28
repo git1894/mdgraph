@@ -21,6 +21,10 @@ If no index exists, it returns:
 
 - `indexed: false`, `projectRoot`, `database`.
 
+`mdgraph status --freshness --json` keeps the default status shape additive by returning:
+
+- `counts`: the same graph counts as `status --json`.
+- `freshness`: lightweight freshness diagnostics with `state` (`fresh`, `stale`, or `unknown`), `recommendation`, optional `lastIndexedAt`, optional `checkedAt`, and optional `issues` entries with `path` and reason (`added`, `modified`, or `deleted`).
 `mdgraph status --storage --json` returns:
 
 - `counts`: the same graph counts as `status --json`.
@@ -31,6 +35,17 @@ If no index exists, it returns:
 - `storage.highDegreeNodes`: highest non-containment graph degree nodes.
 - `storage.vectors`: `total`, compact storage `format`, and provider/model/dimension breakdown.
 
+When `--storage` and `--freshness` are combined, the JSON object includes `counts`, `storage`, and `freshness`.
+
+## `usage --json`
+
+`mdgraph usage --json` returns an agent-friendly workflow guide:
+
+- `projectRoot`: resolved project root used in examples.
+- `commonOptions`: CLI options that are broadly useful to agents and scripts.
+- `workflows`: named workflow entries with `name`, `purpose`, `commands`, and optional `notes`.
+
+The text form prints the same workflow groups for humans. `usage` does not read or write the graph index.
 ## `search --json`
 
 `mdgraph search <query> --json` returns an array of search results. Each result has:

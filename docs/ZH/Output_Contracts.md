@@ -21,6 +21,10 @@
 
 - `indexed: false`、`projectRoot`、`database`。
 
+`mdgraph status --freshness --json` 通过 additive 结构保留默认 status 形状，返回：
+
+- `counts`：与 `status --json` 相同的图计数。
+- `freshness`：轻量 freshness diagnostics，包含 `state`（`fresh`、`stale` 或 `unknown`）、`recommendation`、可选 `lastIndexedAt`、可选 `checkedAt`，以及可选 `issues`。每个 issue 包含 `path` 和 reason（`added`、`modified` 或 `deleted`）。
 `mdgraph status --storage --json` 返回：
 
 - `counts`：与 `status --json` 相同的图计数。
@@ -31,6 +35,17 @@
 - `storage.highDegreeNodes`：非包含边度数最高的图节点。
 - `storage.vectors`：向量总数、紧凑存储 `format` 以及 provider/model/dimensions 分布。
 
+当 `--storage` 和 `--freshness` 组合使用时，JSON object 包含 `counts`、`storage` 和 `freshness`。
+
+## `usage --json`
+
+`mdgraph usage --json` 返回 agent-friendly workflow guide：
+
+- `projectRoot`：示例命令使用的已解析项目根目录。
+- `commonOptions`：对 agent 和脚本普遍有用的 CLI options。
+- `workflows`：具名 workflow 条目，包含 `name`、`purpose`、`commands`，以及可选 `notes`。
+
+文本形式会打印相同的 workflow 分组。`usage` 不读取或写入 graph index。
 ## `search --json`
 
 `mdgraph search <query> --json` 返回搜索结果数组。每个结果包含：

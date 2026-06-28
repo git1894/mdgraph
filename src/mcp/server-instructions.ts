@@ -4,8 +4,21 @@ MDGraph indexes project Markdown into a local SQLite graph: documents, sections,
 entities, source references, and semantic edges such as DEFINES, DEPENDS_ON,
 LINKS_TO, IMPLEMENTS, and REFERENCES_SOURCE.
 
-Use MDGraph before reading many Markdown files manually. Treat it as invited
+Use MDGraph as the first stop for documentation work. Treat it as invited
 documentation context, not hidden memory and not a source-code graph.
+
+Default order for Markdown/documentation questions:
+
+1. mdgraph_status if index availability or freshness is unclear.
+2. mdgraph_context for task-start context when the task touches architecture,
+	roadmap, public contracts, CLI/MCP behavior, release process, docs policy,
+	ADRs, runbooks, incidents, source_refs, or any cross-document feature chain.
+3. mdgraph_search for exact docs keyword/entity/path/command/config/API/error
+	lookups before raw grep or manual file reads.
+4. mdgraph_node or mdgraph_trace after search/context narrows the target.
+5. Raw file reads or text search only when MDGraph is inactive, stale for the
+	task, too sparse, exact neighboring prose is required, or the user explicitly
+	asks for file-level inspection.
 
 - If index availability is unclear -> mdgraph_status.
 - Cross-document design, ADR, spec, runbook, incident, API, source-ref, or feature-chain questions -> mdgraph_context.

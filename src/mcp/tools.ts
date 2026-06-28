@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { computeStatusFreshness, type StatusFreshness } from "../analysis/status-freshness.js";
 import { MCP_LIMITS } from "../config/limits.js";
 import { databasePath, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
@@ -7,10 +8,8 @@ import { GraphRepository, type NodeRecord, type NodeResolution, type StatusCount
 import { buildContext, type ContextAutoMode, type ContextResult } from "../query/context-builder.js";
 import { searchGraph } from "../query/search.js";
 import { traceNodes, type TraceResult } from "../query/trace.js";
-import { scanMarkdownFilesSync } from "../scanner/file-scanner.js";
 import type { MDGraphConfig, SearchResult } from "../types.js";
 import { isPathInsideOrEqual } from "../utils/path-safety.js";
-import { normalizePath } from "../utils/text.js";
 
 export interface McpToolDefinition {
   name: string;
@@ -36,7 +35,7 @@ export class McpInputError extends Error {
 export const tools: McpToolDefinition[] = [
   {
     name: "mdgraph_search",
-    description: "Search indexed Markdown documents, sections, and entities. Use before file reads for quick keyword, entity, path, command, config key, API route, or error-code lookup.",
+    description: "Search indexed Markdown documents, sections, and entities. Use before grep/read_file for docs keyword, entity, path, command, config key, API route, or error-code lookup. Fall back to raw search only for exact text not found in MDGraph or when the index is unavailable/stale for the task.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -50,7 +49,7 @@ export const tools: McpToolDefinition[] = [
   },
   {
     name: "mdgraph_context",
-    description: "Build an explainable task-start documentation brief for a cross-document question. Use before reading multiple Markdown docs manually.",
+    description: "PRIMARY documentation tool. Build an explainable task-start documentation brief for architecture, roadmap, CLI/MCP contract, release, runbook, ADR, source-ref, or other cross-document questions. Use first before reading multiple Markdown docs manually.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -134,7 +133,7 @@ export class ToolHandler {
       return this.withRepository(projectRoot, (repository) => {
         const config = loadConfig(projectRoot);
         const counts = repository.counts();
-        const freshness = statusFreshness(projectRoot, config, repository);
+        const freshness = computeStatusFreshness(projectRoot, config, repository);
         return textResult(formatStatus(projectRoot, counts, freshness), { projectRoot, indexed: true, counts, freshness });
       });
     }
@@ -219,14 +218,6 @@ function textResult(text: string, structuredContent?: unknown): McpToolResult {
   };
 }
 
-interface StatusFreshness {
-  state: "fresh" | "stale" | "unknown";
-  lastIndexedAt?: string;
-  recommendation: string;
-  checkedAt?: string;
-  issues?: Array<{ path: string; reason: "added" | "deleted" | "modified" }>;
-}
-
 interface AgentSearchMode {
   name: "auto";
   limit: number;
@@ -250,61 +241,6 @@ function formatStatus(projectRoot: string, counts: StatusCounts, freshness: Stat
     `Chunks: ${counts.chunks}`,
     `Vectors: ${counts.vectors}`
   ].join("\n");
-}
-
-function statusFreshness(projectRoot: string, config: MDGraphConfig, repository: GraphRepository): StatusFreshness {
-  const lastIndexedAt = repository.latestIndexedAt();
-  const checkedAt = new Date().toISOString();
-  if (!lastIndexedAt) {
-    return {
-      state: "unknown",
-      checkedAt,
-      recommendation: "no indexed timestamp is available; run `mdgraph index` before relying on the graph"
-    };
-  }
-
-  try {
-    const indexedAtMs = Date.parse(lastIndexedAt);
-    const scanned = scanMarkdownFilesSync(projectRoot, config);
-    const indexed = repository.documentHashes();
-    const scannedByPath = new Map(scanned.map((filePath) => [normalizePath(path.relative(projectRoot, filePath)), filePath]));
-    const issues: NonNullable<StatusFreshness["issues"]> = [];
-
-    for (const [relativePath, absolutePath] of scannedByPath) {
-      if (!indexed.has(relativePath)) {
-        issues.push({ path: relativePath, reason: "added" });
-        continue;
-      }
-      if (Number.isFinite(indexedAtMs) && fs.statSync(absolutePath).mtimeMs > indexedAtMs + 1) {
-        issues.push({ path: relativePath, reason: "modified" });
-      }
-    }
-
-    for (const documentPath of indexed.keys()) {
-      if (!scannedByPath.has(documentPath)) {
-        issues.push({ path: documentPath, reason: "deleted" });
-      }
-    }
-
-    const sortedIssues = issues.sort((left, right) => left.path.localeCompare(right.path) || left.reason.localeCompare(right.reason));
-    return {
-      state: sortedIssues.length ? "stale" : "fresh",
-      lastIndexedAt,
-      checkedAt,
-      recommendation: sortedIssues.length
-        ? "Markdown files changed since indexing; run `mdgraph index` before relying on results"
-        : "indexed Markdown files match the lightweight status freshness check",
-      issues: sortedIssues.length ? sortedIssues.slice(0, 20) : undefined
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      state: "unknown",
-      lastIndexedAt,
-      checkedAt,
-      recommendation: `freshness check failed: ${message}; run \`mdgraph doctor --json\` or \`mdgraph index\``
-    };
-  }
 }
 
 function agentSearchMode(config: MDGraphConfig, counts: StatusCounts, query: string): AgentSearchMode {

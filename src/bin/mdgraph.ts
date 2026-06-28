@@ -4,6 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { formatDoctorReport, runDoctor, type DoctorWarning, type DoctorWarningSeverity } from "../analysis/doctor.js";
 import { collectDoctorScope } from "../analysis/doctor-scope.js";
+import { computeStatusFreshness, type StatusFreshness } from "../analysis/status-freshness.js";
 import { createGraphBundle, verifyGraphBundle } from "../bundle/bundle.js";
 import { databasePath, initProjectConfig, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
@@ -33,12 +34,24 @@ program
   .version(packageVersion());
 
 program
+  .command("usage")
+  .description("Print agent-friendly MDGraph workflows and command examples")
+  .option("--json", "Print JSON output")
+  .option("--path <path>", "Project root to use in examples. Defaults to the current working directory")
+  .action((options: { json?: boolean; path?: string }) => {
+    const guide = buildUsageGuide(projectRootFromOption(options.path));
+    printResult(options.json, guide, formatUsageGuide(guide));
+  });
+
+program
   .command("init")
   .description("Create .mdgraph/config.json and build the initial index")
   .option("--docs <glob...>", "Markdown include glob(s)")
   .option("--no-index", "Skip initial indexing after writing config")
-  .action(async (options: { docs?: string[]; index?: boolean }) => {
-    const result = initProjectConfig(process.cwd(), options.docs);
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action(async (options: { docs?: string[]; index?: boolean; path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
+    const result = initProjectConfig(projectRoot, options.docs);
     const configStatus = result.configCreated ? "Created" : "Already exists";
     const gitignoreStatus = result.gitignoreUpdated ? "Updated" : "Already protected";
     console.log(`${configStatus} ${result.configPath}`);
@@ -47,7 +60,7 @@ program
       console.log("Skipped initial index. Run `mdgraph index` to create the local graph.");
       return;
     }
-    const index = await indexProject(process.cwd());
+    const index = await indexProject(projectRoot);
     console.log(formatIndexResult(index));
   });
 
@@ -57,8 +70,9 @@ program
   .option("--json", "Print JSON output")
   .option("--full", "Rebuild the whole index instead of hash-based incremental sync")
   .option("--semantic", "Build local semantic vectors for chunks")
-  .action(async (options: { json?: boolean; full?: boolean; semantic?: boolean }) => {
-    const result = await indexProject(process.cwd(), { full: options.full, semantic: options.semantic });
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action(async (options: { json?: boolean; full?: boolean; semantic?: boolean; path?: string }) => {
+    const result = await indexProject(projectRootFromOption(options.path), { full: options.full, semantic: options.semantic });
     printResult(options.json, result, formatIndexResult(result));
   });
 
@@ -67,8 +81,10 @@ program
   .description("Show graph database status")
   .option("--json", "Print JSON output")
   .option("--storage", "Include storage diagnostics")
-  .action((options: { json?: boolean; storage?: boolean }) => {
-    const projectRoot = validateProjectRoot(process.cwd());
+  .option("--freshness", "Include lightweight index freshness diagnostics")
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((options: { json?: boolean; storage?: boolean; freshness?: boolean; path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
     const database = databasePath(projectRoot);
     if (!fs.existsSync(database)) {
       printResult(
@@ -78,12 +94,17 @@ program
       );
       return;
     }
-    const repository = openRepository();
+    const repository = openRepository(projectRoot);
     try {
       const counts = repository.counts();
+      const freshness = options.freshness ? computeStatusFreshness(projectRoot, loadConfig(projectRoot), repository) : undefined;
       if (options.storage) {
         const storage = repository.storageDiagnostics();
-        printResult(options.json, { counts, storage }, formatStatusWithStorage(counts, storage));
+        printResult(options.json, freshness ? { counts, storage, freshness } : { counts, storage }, formatStatusWithStorage(counts, storage, freshness));
+        return;
+      }
+      if (freshness) {
+        printResult(options.json, { counts, freshness }, formatStatusWithFreshness(counts, freshness));
         return;
       }
       printResult(options.json, counts, formatStatusCounts(counts));
@@ -100,9 +121,11 @@ program
   .option("--limit <number>", "Maximum results", parseInteger)
   .option("--semantic", "Include local semantic vector matches when vectors are indexed")
   .option("--explain", "Include query parsing and ranking explanation details")
-  .action((query: string, options: { json?: boolean; limit?: number; semantic?: boolean; explain?: boolean }) => {
-    const config = loadConfig(process.cwd());
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((query: string, options: { json?: boolean; limit?: number; semantic?: boolean; explain?: boolean; path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
+    const config = loadConfig(projectRoot);
+    const repository = openRepository(projectRoot);
     try {
       if (options.explain) {
         const explanation = explainSearchGraph(repository, config, query, options.limit ?? config.search.defaultLimit, { semantic: options.semantic });
@@ -122,9 +145,11 @@ program
   .argument("<query>")
   .option("--json", "Print JSON output")
   .option("--debug", "Include context packing and graph expansion debug details")
-  .action((query: string, options: { json?: boolean; debug?: boolean }) => {
-    const config = loadConfig(process.cwd());
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((query: string, options: { json?: boolean; debug?: boolean; path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
+    const config = loadConfig(projectRoot);
+    const repository = openRepository(projectRoot);
     try {
       const context = buildContext(repository, config, query, { debug: options.debug });
       printResult(options.json, context, formatContext(context));
@@ -138,8 +163,9 @@ program
   .description("Show a document, entity, source ref, section, or chunk")
   .argument("<query>")
   .option("--json", "Print JSON output")
-  .action((query: string, options: { json?: boolean }) => {
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((query: string, options: { json?: boolean; path?: string }) => {
+    const repository = openRepository(projectRootFromOption(options.path));
     try {
       const resolution = repository.resolveNodeDetailed(query);
       printResult(options.json, nodeResolutionJson(resolution), formatNodeResolution(resolution));
@@ -155,8 +181,9 @@ program
   .argument("<to>")
   .option("--json", "Print JSON output")
   .option("--depth <number>", "Maximum graph depth", parseInteger)
-  .action((from: string, to: string, options: { json?: boolean; depth?: number }) => {
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((from: string, to: string, options: { json?: boolean; depth?: number; path?: string }) => {
+    const repository = openRepository(projectRootFromOption(options.path));
     try {
       const trace = traceNodes(repository, from, to, options.depth ?? 6);
       printResult(options.json, trace, formatTrace(trace));
@@ -221,8 +248,9 @@ bundleCommand
   .description("Create a private directory bundle from the current graph")
   .option("--json", "Print JSON output")
   .option("--profile <profile>", "Bundle profile", "private")
-  .action(async (options: { json?: boolean; profile: string }) => {
-    const result = await createGraphBundle(process.cwd(), { profile: options.profile });
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action(async (options: { json?: boolean; profile: string; path?: string }) => {
+    const result = await createGraphBundle(projectRootFromOption(options.path), { profile: options.profile });
     printResult(options.json, result, formatBundleCreate(result));
   });
 
@@ -231,8 +259,9 @@ bundleCommand
   .description("Verify a graph bundle directory")
   .argument("<dir>")
   .option("--json", "Print JSON output")
-  .action((dir: string, options: { json?: boolean }) => {
-    const result = verifyGraphBundle(dir, { projectRoot: process.cwd() });
+  .option("--path <path>", "Project root for freshness comparison. Defaults to the current working directory")
+  .action((dir: string, options: { json?: boolean; path?: string }) => {
+    const result = verifyGraphBundle(dir, { projectRoot: projectRootFromOption(options.path) });
     printResult(options.json, result, formatBundleVerify(result));
     if (!result.valid) {
       process.exitCode = 1;
@@ -247,10 +276,12 @@ exportCommand
   .command("graphjson")
   .description("Export a deterministic structural GraphJSON view")
   .option("--json", "Print JSON output")
-  .action((options: { json?: boolean }) => {
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((options: { json?: boolean; path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
+    const repository = openRepository(projectRoot);
     try {
-      const graph = buildGraphJsonExport(process.cwd(), repository);
+      const graph = buildGraphJsonExport(projectRoot, repository);
       if (options.json) {
         printResult(true, graph, "");
         return;
@@ -272,8 +303,9 @@ exportMermaidCommand
   .argument("<to>")
   .option("--json", "Print JSON output")
   .option("--depth <number>", "Maximum graph depth", parseInteger)
-  .action((from: string, to: string, options: { json?: boolean; depth?: number }) => {
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((from: string, to: string, options: { json?: boolean; depth?: number; path?: string }) => {
+    const repository = openRepository(projectRootFromOption(options.path));
     try {
       const trace = traceNodes(repository, from, to, options.depth ?? 6);
       const result = buildMermaidTraceExport(trace);
@@ -286,10 +318,12 @@ exportMermaidCommand
 exportCommand
   .command("markdown-index")
   .description("Export an Obsidian-friendly Markdown graph index")
-  .action(() => {
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((options: { path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
+    const repository = openRepository(projectRoot);
     try {
-      const graph = buildGraphJsonExport(process.cwd(), repository);
+      const graph = buildGraphJsonExport(projectRoot, repository);
       console.log(formatObsidianMarkdownIndex(graph));
     } finally {
       closeRepository(repository);
@@ -300,10 +334,12 @@ exportCommand
   .command("docs-site")
   .description("Export lightweight docs-site graph data")
   .option("--json", "Print JSON output")
-  .action((options: { json?: boolean }) => {
-    const repository = openRepository();
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((options: { json?: boolean; path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
+    const repository = openRepository(projectRoot);
     try {
-      const graph = buildGraphJsonExport(process.cwd(), repository);
+      const graph = buildGraphJsonExport(projectRoot, repository);
       const index = buildDocsSiteIndex(graph);
       printResult(options.json, index, JSON.stringify(index, null, 2));
     } finally {
@@ -317,11 +353,12 @@ exportCommand
   .option("--json", "Print JSON output")
   .option("--provider <provider>", "Bridge provider", "codegraph")
   .option("--artifact <file>", "Read-only provider artifact to inspect")
-  .action((options: { json?: boolean; provider: string; artifact?: string }) => {
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action((options: { json?: boolean; provider: string; artifact?: string; path?: string }) => {
     if (options.provider !== "codegraph") {
       throw new Error(`Unsupported source bridge provider: ${options.provider}. MDGraph 0.7 supports the codegraph read-only bridge spike.`);
     }
-    const repository = openRepository();
+    const repository = openRepository(projectRootFromOption(options.path));
     try {
       const report = buildCodeGraphBridgeReport(repository, { artifact: options.artifact });
       printResult(options.json, report, formatSourceBridgeReport(report));
@@ -373,8 +410,9 @@ program
   .description("Compare the current graph index against a base Git revision")
   .requiredOption("--base <ref>", "Base Git revision")
   .option("--json", "Print JSON output")
-  .action(async (options: { base: string; json?: boolean }) => {
-    const report = await generateGraphDiff(process.cwd(), { base: options.base });
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action(async (options: { base: string; json?: boolean; path?: string }) => {
+    const report = await generateGraphDiff(projectRootFromOption(options.path), { base: options.base });
     printResult(options.json, report, formatGraphDiff(report));
   });
 
@@ -387,8 +425,9 @@ program
   .option("--base <ref>", "Include graph diff summary against a base Git revision")
   .option("--benchmark <file>", "Include paired agent benchmark summary from structured run records")
   .option("--previous-report <file>", "Explicit previous report JSON for trend context")
-  .action(async (options: { json?: boolean; eval?: boolean; bundle?: string; base?: string; benchmark?: string; previousReport?: string }) => {
-    const report = await generateReport(process.cwd(), {
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action(async (options: { json?: boolean; eval?: boolean; bundle?: string; base?: string; benchmark?: string; previousReport?: string; path?: string }) => {
+    const report = await generateReport(projectRootFromOption(options.path), {
       eval: options.eval,
       bundle: options.bundle,
       base: options.base,
@@ -415,9 +454,11 @@ program
   .description("Watch Markdown files and incrementally update the graph index")
   .option("--semantic", "Build local semantic vectors during watch indexing")
   .option("--debounce <ms>", "Debounce delay in milliseconds", parseInteger)
-  .action(async (options: { semantic?: boolean; debounce?: number }) => {
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action(async (options: { semantic?: boolean; debounce?: number; path?: string }) => {
+    const projectRoot = projectRootFromOption(options.path);
     console.error("MDGraph watch started. Press Ctrl+C to stop.");
-    const handle = await watchProject(process.cwd(), {
+    const handle = await watchProject(projectRoot, {
       semantic: options.semantic,
       debounceMs: options.debounce,
       onIndexed: (result) => {
@@ -442,17 +483,19 @@ program
   .option("--fail-on <severity>", "Exit with non-zero status when warnings at or above severity exist (error, warn, info)")
   .option("--changed", "Limit doctor output to changed Markdown paths in the Git worktree")
   .option("--since <ref>", "Limit doctor output to Markdown paths changed since a Git ref")
-  .action(async (options: { json?: boolean; strict?: boolean; failOn?: string; changed?: boolean; since?: string }) => {
+  .option("--path <path>", "Project root. Defaults to the current working directory")
+  .action(async (options: { json?: boolean; strict?: boolean; failOn?: string; changed?: boolean; since?: string; path?: string }) => {
     if (options.changed && options.since) {
       throw new Error("Use either --changed or --since <ref>, not both.");
     }
     const failOn = parseDoctorSeverity(options.failOn);
+    const projectRoot = projectRootFromOption(options.path);
     const scope = options.changed
-      ? collectDoctorScope(process.cwd(), { mode: "changed" })
+      ? collectDoctorScope(projectRoot, { mode: "changed" })
       : options.since
-        ? collectDoctorScope(process.cwd(), { mode: "since", baseRef: options.since })
+        ? collectDoctorScope(projectRoot, { mode: "since", baseRef: options.since })
         : undefined;
-    const report = await runDoctor(process.cwd(), { scope });
+    const report = await runDoctor(projectRoot, { scope });
     printResult(options.json, report, formatDoctorReport(report));
     if (options.strict && doctorIssueCount(report.summary) > 0) {
       process.exitCode = 1;
@@ -483,6 +526,110 @@ function printResult(json: boolean | undefined, value: unknown, text: string): v
   console.log(text);
 }
 
+interface UsageGuide {
+  projectRoot: string;
+  commonOptions: Array<{ flag: string; description: string }>;
+  workflows: Array<{ name: string; purpose: string; commands: string[]; notes?: string[] }>;
+}
+
+function buildUsageGuide(projectRoot: string): UsageGuide {
+  const project = shellPath(projectRoot);
+  return {
+    projectRoot,
+    commonOptions: [
+      { flag: "--path <project>", description: "Run against an explicit project root; defaults to the current working directory." },
+      { flag: "--json", description: "Print machine-readable output when the command supports structured output." }
+    ],
+    workflows: [
+      {
+        name: "Initialize",
+        purpose: "Create configuration, protect local artifacts, and build the initial graph index.",
+        commands: [
+          `mdgraph init --path ${project}`,
+          `mdgraph init --path ${project} --docs "docs/**/*.md"`,
+          `mdgraph init --path ${project} --no-index`
+        ]
+      },
+      {
+        name: "Refresh Index",
+        purpose: "Update the local graph after Markdown changes.",
+        commands: [
+          `mdgraph index --path ${project}`,
+          `mdgraph index --path ${project} --full`,
+          `mdgraph index --path ${project} --full --semantic`
+        ],
+        notes: ["`index` is hash-based incremental by default; use `--full` for a rebuild and compaction."]
+      },
+      {
+        name: "Check Health",
+        purpose: "Inspect availability, storage, freshness, and documentation-health warnings.",
+        commands: [
+          `mdgraph status --path ${project} --json`,
+          `mdgraph status --path ${project} --freshness --json`,
+          `mdgraph status --path ${project} --storage --freshness --json`,
+          `mdgraph doctor --path ${project} --json`,
+          `mdgraph doctor --path ${project} --strict`
+        ],
+        notes: ["`node:sqlite` experimental warnings are informational when the command exits successfully."]
+      },
+      {
+        name: "Task Start",
+        purpose: "Gather explainable context before reading multiple Markdown files manually.",
+        commands: [
+          `mdgraph context "what should I read before changing indexing?" --path ${project}`,
+          `mdgraph search "indexing config" --path ${project} --explain --json`,
+          `mdgraph node "docs/EN/Architecture.md" --path ${project}`,
+          `mdgraph trace "Architecture.md" "src/indexer.ts" --path ${project}`
+        ]
+      },
+      {
+        name: "CI And Artifacts",
+        purpose: "Produce reproducible graph reports and interoperability artifacts.",
+        commands: [
+          `mdgraph report --path ${project} --json`,
+          `mdgraph diff --path ${project} --base main --json`,
+          `mdgraph export graphjson --path ${project} --json`,
+          `mdgraph bundle create --path ${project} --profile private --json`
+        ]
+      },
+      {
+        name: "Help",
+        purpose: "Inspect syntax for all commands or a specific command.",
+        commands: ["mdgraph help", "mdgraph help search", "mdgraph usage --json"]
+      }
+    ]
+  };
+}
+
+function formatUsageGuide(guide: UsageGuide): string {
+  const workflows = guide.workflows.map((workflow) => {
+    const notes = workflow.notes?.length ? ["Notes:", ...workflow.notes.map((note) => `- ${note}`)] : [];
+    return [
+      `## ${workflow.name}`,
+      workflow.purpose,
+      "Commands:",
+      ...workflow.commands.map((command) => `- ${command}`),
+      ...notes
+    ].join("\n");
+  });
+  return [
+    "MDGraph usage",
+    `Project: ${guide.projectRoot}`,
+    "Common options:",
+    ...guide.commonOptions.map((option) => `- ${option.flag}: ${option.description}`),
+    "",
+    ...workflows
+  ].join("\n\n");
+}
+
+function shellPath(value: string): string {
+  return /\s/.test(value) ? `"${value.replace(/"/g, "\\\"")}"` : value;
+}
+
+function projectRootFromOption(projectRoot: string | undefined): string {
+  return validateProjectRoot(projectRoot ?? process.cwd());
+}
+
 function formatIndexResult(result: IndexResult): string {
   return `Indexed ${result.files} file(s) in ${result.mode} mode. Changed: ${result.changed}, deleted: ${result.deleted}, unchanged: ${result.unchanged}, skipped: ${result.skipped}. Documents: ${result.counts.documents}, entities: ${result.counts.entities}, edges: ${result.counts.edges}.`;
 }
@@ -493,12 +640,13 @@ function formatStatusCounts(counts: ReturnType<GraphRepository["counts"]>): stri
 
 function formatStatusWithStorage(
   counts: ReturnType<GraphRepository["counts"]>,
-  storage: ReturnType<GraphRepository["storageDiagnostics"]>
+  storage: ReturnType<GraphRepository["storageDiagnostics"]>,
+  freshness?: StatusFreshness
 ): string {
   const wal = storage.database.walCheckpoint.available
     ? `WAL pages: ${storage.database.walCheckpoint.log}, checkpointed: ${storage.database.walCheckpoint.checkpointed}`
     : `WAL status unavailable: ${storage.database.walCheckpoint.reason}`;
-  return [
+  const lines = [
     formatStatusCounts(counts),
     `Storage: ${formatBytes(storage.database.estimatedBytes)} (${storage.database.pageCount} pages, ${storage.database.freelistCount} freelist pages, ${storage.database.journalMode} journal).`,
     wal,
@@ -506,6 +654,22 @@ function formatStatusWithStorage(
     `Top path groups: ${storage.pathGroups.slice(0, 5).map((item) => `${item.group}=${formatBytes(item.contentBytes)}`).join(", ") || "none"}.`,
     `Edge kinds: ${storage.edgeKinds.map((item) => `${item.kind}=${item.edges}`).join(", ") || "none"}.`,
     `Vectors: ${storage.vectors.total}.`
+  ];
+  if (freshness) {
+    lines.push(formatFreshness(freshness));
+  }
+  return lines.join("\n");
+}
+
+function formatStatusWithFreshness(counts: ReturnType<GraphRepository["counts"]>, freshness: StatusFreshness): string {
+  return [formatStatusCounts(counts), formatFreshness(freshness)].join("\n");
+}
+
+function formatFreshness(freshness: StatusFreshness): string {
+  return [
+    `Freshness: ${freshness.state} - ${freshness.recommendation}`,
+    freshness.lastIndexedAt ? `Last indexed: ${freshness.lastIndexedAt}` : "Last indexed: unavailable",
+    freshness.issues?.length ? `Stale issues: ${freshness.issues.slice(0, 5).map((issue) => `${issue.path}:${issue.reason}`).join(", ")}` : "Stale issues: none"
   ].join("\n");
 }
 

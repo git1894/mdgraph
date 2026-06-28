@@ -6,6 +6,15 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.9.2 - 2026-06-28
+
+### Added
+
+- Added `--path <project>` to project-related CLI commands so agents and scripts can target a repository without changing shell cwd.
+- Added `mdgraph usage` and `mdgraph usage --json` for agent-friendly workflow guidance.
+- Added `mdgraph status --freshness` for lightweight index freshness diagnostics from the CLI.
+- Strengthened MCP and agent-pack guidance so agents use MDGraph before raw Markdown grep/read loops for documentation, architecture, contract, release, and cross-document tasks.
+
 ## 0.9.1 - 2026-06-28
 
 ### Added

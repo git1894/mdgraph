@@ -30,6 +30,17 @@ function runCleanProjectSmoke() {
   const initStatus = runCliJson(root, ["status", "--json"]);
   assertEqual(initStatus.documents, 3, "init should build the initial graph index");
 
+  const usage = runCliJson(repoRoot, ["usage", "--path", root, "--json"]);
+  assertEqual(usage.projectRoot, root, "usage --path should resolve the explicit project root");
+  assert(usage.workflows.some((workflow) => workflow.name === "Task Start"), "usage --json should include task-start guidance");
+
+  const pathStatus = runCliJson(repoRoot, ["status", "--path", root, "--json"]);
+  assertEqual(pathStatus.documents, 3, "status --path should read an explicit project root from another cwd");
+
+  const freshnessStatus = runCliJson(repoRoot, ["status", "--path", root, "--freshness", "--json"]);
+  assertEqual(freshnessStatus.counts.documents, 3, "status --freshness should include counts");
+  assertEqual(freshnessStatus.freshness.state, "fresh", "status --freshness should report a fresh index after init");
+
   const index = runCliJson(root, ["index", "--json"]);
   assertEqual(index.files, 3, "index should include the clean smoke docs");
 
@@ -54,6 +65,9 @@ function runCleanProjectSmoke() {
 
   const search = runCliJson(root, ["search", "AuthService", "--limit", "3", "--json"]);
   assert(search.some((item) => item.document?.path === "docs/auth-v2-design.md"), "search should find auth design");
+
+  const pathSearch = runCliJson(repoRoot, ["search", "AuthService", "--path", root, "--limit", "3", "--json"]);
+  assert(pathSearch.some((item) => item.document?.path === "docs/auth-v2-design.md"), "search --path should query an explicit project root from another cwd");
 
   const semanticSearch = runCliJson(root, ["search", "session refresh RedisTimeoutError", "--semantic", "--json"]);
   assert(semanticSearch.some((item) => item.semantic?.provider === "local-hash"), "semantic search JSON should expose provider metadata");

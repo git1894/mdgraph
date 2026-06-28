@@ -167,9 +167,12 @@ Markdown files → Scanner → Parser → Entity Extractor → Graph Builder →
 
 ## CLI Reference
 
+Project-related commands accept `--path /your/project`; when omitted, MDGraph uses the current working directory. This is useful for agents and scripts that need to inspect a repository without changing shell cwd.
+
 ```bash
 # Initialize
 node dist/bin/mdgraph.js init --docs "docs/**/*.md"    # Create .mdgraph/config.json
+node dist/bin/mdgraph.js init --path /your/project      # Initialize an explicit project root
 
 # Indexing
 node dist/bin/mdgraph.js index                          # Hash-based incremental sync
@@ -179,7 +182,9 @@ node dist/bin/mdgraph.js index --full --semantic        # Full rebuild with vect
 # Inspection
 node dist/bin/mdgraph.js status                         # Graph counts and DB health
 node dist/bin/mdgraph.js status --json                  # Machine-readable output
+node dist/bin/mdgraph.js status --freshness --json      # Counts plus lightweight freshness diagnostics
 node dist/bin/mdgraph.js status --storage --json        # Counts plus storage diagnostics
+node dist/bin/mdgraph.js status --path /your/project --json # Inspect without changing cwd
 node dist/bin/mdgraph.js semantic status --json         # Semantic provider, vector coverage, and reindex guidance
 
 # Query
@@ -188,6 +193,7 @@ node dist/bin/mdgraph.js search "authentication timeout" --semantic   # Include 
 node dist/bin/mdgraph.js search "AuthService" --limit 10             # Limit results
 node dist/bin/mdgraph.js search "AuthService" --explain --json       # Query/ranking diagnostics
 node dist/bin/mdgraph.js context "why does RedisTimeoutError affect login"   # Context package
+node dist/bin/mdgraph.js context "why does RedisTimeoutError affect login" --path /your/project # Context for an explicit project root
 node dist/bin/mdgraph.js context "why does RedisTimeoutError affect login" --debug --json # Packing diagnostics
 node dist/bin/mdgraph.js node "AuthService"                          # Resolve by name/path/id
 node dist/bin/mdgraph.js node "docs/auth-v2-design.md#session-refresh" # Resolve a section by path anchor
@@ -239,9 +245,11 @@ node dist/bin/mdgraph.js doctor --since main --json        # Scope to changes si
 # Help
 node dist/bin/mdgraph.js help                              # All commands
 node dist/bin/mdgraph.js help search                       # Command-specific help
+node dist/bin/mdgraph.js usage                             # Agent-friendly workflow examples
+node dist/bin/mdgraph.js usage --path /your/project --json # Machine-readable workflow guide
 ```
 
-All query commands support `--json` for structured output useful to agents and scripts. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality, RRF search fusion, MMR-style document-diverse context packing, query mode, and optional semantic reranking diagnostics; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content; `--query-set cjk` records a small Chinese/Japanese retrieval baseline covered by lightweight CJK n-gram preprocessing. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md); stability labels and compatibility rules are in [Public_Contracts.md](docs/EN/Public_Contracts.md).
+All query commands support `--json` for structured output useful to agents and scripts, and project-related commands support `--path` unless they only verify an explicit input artifact. `mdgraph eval` reports lightweight retrieval metrics for search/context/trace quality, RRF search fusion, MMR-style document-diverse context packing, query mode, and optional semantic reranking diagnostics; it is a deterministic smoke check, not a real agent A/B benchmark. The default `alpha` query set targets the built-in fixture corpus; `--query-set ecc` uses path-only expected records for an indexed ECC-style workspace without copying external content; `--query-set cjk` records a small Chinese/Japanese retrieval baseline covered by lightweight CJK n-gram preprocessing. Stable top-level fields are documented in [Output_Contracts.md](docs/EN/Output_Contracts.md); stability labels and compatibility rules are in [Public_Contracts.md](docs/EN/Public_Contracts.md).
 
 `bundle create` currently supports only `--profile private`. It writes a directory artifact with `manifest.json`, `graph.db`, `config.json`, and a storage/status report. The manifest records schema version, graph counts, config/source hashes, and provenance, but not Markdown body content or the absolute project root. `report` is intended for CI artifacts and local workflow checks; trend state is based only on an explicit `--previous-report` file.
 

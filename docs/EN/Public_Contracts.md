@@ -14,7 +14,7 @@ This document records the public contract boundary introduced for the 0.8 contra
 
 | Surface | Status | Owner | Contract |
 |---|---|---|---|
-| CLI command names and documented flags | stable | `src/bin/mdgraph.ts` | `init`, `index`, `status`, `search`, `context`, `node`, `trace`, `eval`, `semantic status`, `bundle create/verify`, `export`, `import graphjson --verify`, `diff`, `report`, `serve --mcp`, `watch`, and `doctor`. |
+| CLI command names and documented flags | stable | `src/bin/mdgraph.ts` | `usage`, `init`, `index`, `status`, `search`, `context`, `node`, `trace`, `eval`, `semantic status`, `bundle create/verify`, `export`, `import graphjson --verify`, `diff`, `report`, `serve --mcp`, `watch`, and `doctor`. Project-related commands support additive `--path <project>` where applicable. `status --freshness` adds optional freshness diagnostics without changing the default `status --json` shape. |
 | Top-level CLI JSON output shapes | stable | `docs/EN/Output_Contracts.md` | Required fields documented in Output Contracts are stable; command-specific nested graph records follow `src/types.ts` unless marked otherwise. |
 | MCP tool names and input schemas | stable | `src/mcp/tools.ts` | Exactly five tools: `mdgraph_search`, `mdgraph_context`, `mdgraph_node`, `mdgraph_trace`, and `mdgraph_status`; schemas reject undeclared properties. |
 | MCP text output wording | experimental | `src/mcp/tools.ts` | Text is human-facing guidance; `structuredContent` is the preferred machine contract. |

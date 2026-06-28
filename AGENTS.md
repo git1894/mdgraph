@@ -17,6 +17,14 @@
 
 Node.js requires `>=22.5.0`. This project uses `node:sqlite`; current Node versions may print an experimental warning—as long as the command exits successfully, this is not a failure signal.
 
+## Documentation Graph Usage
+
+- Use MDGraph before raw Markdown grep/read loops for architecture, roadmap, public contract, CLI/MCP behavior, release, docs policy, ADR, runbook, incident, source_ref, or cross-document feature-chain questions.
+- If index availability or freshness is unclear, call `mdgraph_status` first.
+- Use `mdgraph_context` as the task-start documentation brief before reading multiple docs manually; include task text and any known files.
+- Use `mdgraph_search` for docs keyword/entity/path/command/config/API/error lookup before raw text search.
+- Fall back to normal file reads or grep only when MDGraph is inactive, stale for the task, too sparse, exact neighboring prose is required, or the user explicitly asks for file-level inspection.
+
 ## Code Conventions
 
 - Code is TypeScript ESM / NodeNext; when importing local TS modules, use the compiled `.js` extension form.

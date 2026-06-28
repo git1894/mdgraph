@@ -38,6 +38,8 @@ describe("MCPServer", () => {
 
     expect(transport.responses[0].result).toMatchObject({ serverInfo: { name: "mdgraph" } });
     expect(JSON.stringify(transport.responses[0].result)).toContain("task-start documentation brief");
+    expect(JSON.stringify(transport.responses[0].result)).toContain("Default order for Markdown/documentation questions");
+    expect(JSON.stringify(transport.responses[0].result)).toContain("Raw file reads or text search only when MDGraph is inactive");
     expect(JSON.stringify(transport.responses[1].result)).toContain("mdgraph_context");
     expect(JSON.stringify(transport.responses[2].result)).toContain("auth-v2-design.md");
   });

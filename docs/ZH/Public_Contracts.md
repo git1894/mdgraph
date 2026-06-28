@@ -14,7 +14,7 @@
 
 | Surface | 状态 | Owner | 契约 |
 |---|---|---|---|
-| CLI command names 和已记录 flags | stable | `src/bin/mdgraph.ts` | `init`、`index`、`status`、`search`、`context`、`node`、`trace`、`eval`、`semantic status`、`bundle create/verify`、`export`、`import graphjson --verify`、`diff`、`report`、`serve --mcp`、`watch` 和 `doctor`。 |
+| CLI command names 和已记录 flags | stable | `src/bin/mdgraph.ts` | `usage`、`init`、`index`、`status`、`search`、`context`、`node`、`trace`、`eval`、`semantic status`、`bundle create/verify`、`export`、`import graphjson --verify`、`diff`、`report`、`serve --mcp`、`watch` 和 `doctor`。项目相关命令在适用处支持 additive `--path <project>`。`status --freshness` 增加可选 freshness diagnostics，不改变默认 `status --json` 形状。 |
 | 顶层 CLI JSON output shapes | stable | `docs/ZH/Output_Contracts.md` | Output Contracts 中记录的必需字段稳定；命令内嵌 graph record 遵循 `src/types.ts`，除非另有说明。 |
 | MCP tool names 和 input schemas | stable | `src/mcp/tools.ts` | 固定五个工具：`mdgraph_search`、`mdgraph_context`、`mdgraph_node`、`mdgraph_trace` 和 `mdgraph_status`；schema 拒绝未声明属性。 |
 | MCP text output wording | experimental | `src/mcp/tools.ts` | 文本是面向人的提示；机器契约优先使用 `structuredContent`。 |

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { indexProject } from "../src/indexer.js";
 import { ToolHandler, hasIndex, tools } from "../src/mcp/tools.js";
+import type { ContextResult } from "../src/query/context-builder.js";
 import { createFixtureDocs } from "./fixtures.js";
 
 interface NodeToolStructuredContent {
@@ -13,14 +14,7 @@ interface NodeToolStructuredContent {
 }
 
 interface ContextToolStructuredContent {
-  context: {
-    maxChars: number;
-    usedChars: number;
-    knownFiles?: string[];
-    suggestedNextQueries?: string[];
-    mode?: { name: string; searchLimit: number; maxDepth: number; maxChars: number };
-    items: Array<{ nodeId: string; documentId: string; sectionId?: string; anchor?: string; path: string; reason: string }>;
-  };
+  context: ContextResult;
 }
 
 interface SearchToolStructuredContent {
@@ -54,7 +48,12 @@ describe("ToolHandler", () => {
       "mdgraph_trace",
       "mdgraph_status"
     ]);
-    expect(tools.find((tool) => tool.name === "mdgraph_context")?.description).toContain("task-start documentation brief");
+    const contextDescription = tools.find((tool) => tool.name === "mdgraph_context")?.description;
+    const searchDescription = tools.find((tool) => tool.name === "mdgraph_search")?.description;
+    expect(contextDescription).toContain("PRIMARY documentation tool");
+    expect(contextDescription).toContain("task-start documentation brief");
+    expect(contextDescription).toContain("Use first before reading multiple Markdown docs manually");
+    expect(searchDescription).toContain("Use before grep/read_file");
     expect(tools.find((tool) => tool.name === "mdgraph_status")?.description).toContain("Use first");
   });
 
