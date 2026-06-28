@@ -27,7 +27,8 @@
 - 确认已知 output-shape 不一致已经规范化，或被明确记录为刻意保留。
 - 确认 `context --json` 和 MCP `mdgraph_context.structuredContent` 暴露恢复字段（`nodeId`、`documentId`、可选 `sectionId`、可选 `anchor` 和 graph-expansion `edgePath`），方便 agent 交接到 `node`、`trace` 和 raw Markdown。
 - 确认 Node.js `>=22.5.0` 仍是支持下限，且当前 release 已在当前 Node 22.x 上测试。
-- 确认 Windows 已在本地或 CI smoke。`1.0` 前 macOS 和 Linux 应有 CI 或 release maintainer smoke。
+- 确认 Linux 和 Windows full CI 行通过。`1.0` 前确认 macOS CI smoke 行通过 build-output CLI 和 packed-artifact smoke。
+- 对 CI 有意不自动覆盖的平台相关长运行 surface 执行 maintainer smoke：`serve --mcp`、`watch`，以及在相关目标 OS 上通过 `MDGRAPH_EXTERNAL_ECC_PATH` 运行 external corpus smoke。
 - 确认 1.0 release notes 将兼容承诺与功能新增分开说明。
 
 ## 命令门槛
@@ -64,6 +65,7 @@ git diff --check
 - `task:public-check` 不应发现 `docs/tasks/` 下除允许公开文件外的已跟踪任务工件。
 - `git diff --check` 干净。Windows CRLF 文件如出现未改动行尾误报，可设置仓库本地 `core.whitespace=cr-at-eol`。
 - 当 scanner、parser、storage、query、MCP 或 doctor 行为对外部语料产生实质变化时，必须运行 external corpus smoke。如果未设置 `MDGRAPH_EXTERNAL_ECC_PATH`，应明确记录 skip。
+- macOS CI 行仅作 smoke，不替代完整命令门槛，也不替代 MCP server、watcher 和 external-corpus 行为的 maintainer 检查。
 
 ## Package 门槛
 

@@ -10,6 +10,7 @@ const tempRoots = [];
 try {
   assertFile(cliPath, "Run `npm run build` before `npm run smoke:cli`.");
   runCleanProjectSmoke();
+  runInitNoIndexSmoke();
   runBenchmarkSmoke();
   runStrictFailureSmoke();
   runDoctorGateSmoke();
@@ -26,6 +27,9 @@ function runCleanProjectSmoke() {
   writeCleanDocs(root);
 
   runCli(root, ["init", "--docs", "docs/**/*.md"]);
+  const initStatus = runCliJson(root, ["status", "--json"]);
+  assertEqual(initStatus.documents, 3, "init should build the initial graph index");
+
   const index = runCliJson(root, ["index", "--json"]);
   assertEqual(index.files, 3, "index should include the clean smoke docs");
 
@@ -139,6 +143,15 @@ function runCleanProjectSmoke() {
   assertEqual(report.schema.baseline, "current", "report should mark a freshly created database as current");
   assertEqual(report.bundle.valid, true, "report should include bundle verification");
   assert(report.eval.summary.cases > 0, "report --eval should include evaluation summary");
+}
+
+function runInitNoIndexSmoke() {
+  const root = makeTempRoot("mdgraph-cli-init-no-index-");
+  writeCleanDocs(root);
+
+  runCli(root, ["init", "--docs", "docs/**/*.md", "--no-index"]);
+  const status = runCliJson(root, ["status", "--json"]);
+  assertEqual(status.indexed, false, "init --no-index should leave the graph inactive");
 }
 
 function runBenchmarkSmoke() {

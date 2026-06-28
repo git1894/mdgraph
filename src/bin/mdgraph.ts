@@ -5,7 +5,7 @@ import { Command } from "commander";
 import { formatDoctorReport, runDoctor, type DoctorWarning, type DoctorWarningSeverity } from "../analysis/doctor.js";
 import { collectDoctorScope } from "../analysis/doctor-scope.js";
 import { createGraphBundle, verifyGraphBundle } from "../bundle/bundle.js";
-import { databasePath, initConfig, loadConfig } from "../config/load-config.js";
+import { databasePath, initProjectConfig, loadConfig } from "../config/load-config.js";
 import { openExistingDatabase } from "../db/connection.js";
 import { GraphRepository, type NodeResolution } from "../db/repositories.js";
 import { formatGraphDiff, generateGraphDiff } from "../diff/graph-diff.js";
@@ -14,7 +14,7 @@ import { buildMermaidTraceExport } from "../export/diagram.js";
 import { buildGraphJsonExport, formatGraphJsonVerification, readGraphJsonFile, stableGraphJson, verifyGraphJsonExport } from "../export/graphjson.js";
 import { buildDocsSiteIndex, formatObsidianMarkdownIndex } from "../export/markdown-index.js";
 import { buildCodeGraphBridgeReport, type SourceBridgeReport } from "../export/source-bridge.js";
-import { indexProject } from "../indexer.js";
+import { indexProject, type IndexResult } from "../indexer.js";
 import { startStdioMcpServer } from "../mcp/server.js";
 import { buildContext } from "../query/context-builder.js";
 import { explainSearchGraph, searchGraph } from "../query/search.js";
@@ -34,11 +34,21 @@ program
 
 program
   .command("init")
-  .description("Create .mdgraph/config.json")
+  .description("Create .mdgraph/config.json and build the initial index")
   .option("--docs <glob...>", "Markdown include glob(s)")
-  .action((options: { docs?: string[] }) => {
-    const target = initConfig(process.cwd(), options.docs);
-    console.log(`Created ${target}`);
+  .option("--no-index", "Skip initial indexing after writing config")
+  .action(async (options: { docs?: string[]; index?: boolean }) => {
+    const result = initProjectConfig(process.cwd(), options.docs);
+    const configStatus = result.configCreated ? "Created" : "Already exists";
+    const gitignoreStatus = result.gitignoreUpdated ? "Updated" : "Already protected";
+    console.log(`${configStatus} ${result.configPath}`);
+    console.log(`${gitignoreStatus} ${result.gitignorePath}`);
+    if (options.index === false) {
+      console.log("Skipped initial index. Run `mdgraph index` to create the local graph.");
+      return;
+    }
+    const index = await indexProject(process.cwd());
+    console.log(formatIndexResult(index));
   });
 
 program
@@ -49,11 +59,7 @@ program
   .option("--semantic", "Build local semantic vectors for chunks")
   .action(async (options: { json?: boolean; full?: boolean; semantic?: boolean }) => {
     const result = await indexProject(process.cwd(), { full: options.full, semantic: options.semantic });
-    printResult(
-      options.json,
-      result,
-      `Indexed ${result.files} file(s) in ${result.mode} mode. Changed: ${result.changed}, deleted: ${result.deleted}, unchanged: ${result.unchanged}, skipped: ${result.skipped}. Documents: ${result.counts.documents}, entities: ${result.counts.entities}, edges: ${result.counts.edges}.`
-    );
+    printResult(options.json, result, formatIndexResult(result));
   });
 
 program
@@ -475,6 +481,10 @@ function printResult(json: boolean | undefined, value: unknown, text: string): v
     return;
   }
   console.log(text);
+}
+
+function formatIndexResult(result: IndexResult): string {
+  return `Indexed ${result.files} file(s) in ${result.mode} mode. Changed: ${result.changed}, deleted: ${result.deleted}, unchanged: ${result.unchanged}, skipped: ${result.skipped}. Documents: ${result.counts.documents}, entities: ${result.counts.entities}, edges: ${result.counts.edges}.`;
 }
 
 function formatStatusCounts(counts: ReturnType<GraphRepository["counts"]>): string {

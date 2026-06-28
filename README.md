@@ -33,22 +33,22 @@ npm install
 npm run build
 ```
 
-### 2. Initialize a Project
+### 2. Initialize and Index a Project
 
 ```bash
 cd your-project
 node /path/to/mdgraph/dist/bin/mdgraph.js init --docs "docs/**/*.md"
 ```
 
-Creates `.mdgraph/config.json` with your Markdown include/exclude globs.
+Creates `.mdgraph/config.json`, protects local graph artifacts with an idempotent `.gitignore` block when needed, and builds the initial graph index. `.mdgraph/config.json` can be tracked, while `.mdgraph/graph.db` and generated `.mdgraph` artifacts stay local by default. Use `--no-index` only when you want to inspect or edit the config before building the graph.
 
-### 3. Index Your Docs
+### 3. Refresh Your Docs
 
 ```bash
 node /path/to/mdgraph/dist/bin/mdgraph.js index
 ```
 
-Builds the deterministic graph: documents, sections, entities, edges — all derived from structure, not LLM hallucinations.
+Refreshes the deterministic graph after Markdown changes: documents, sections, entities, edges — all derived from structure, not LLM hallucinations.
 
 ### 4. Connect Your Agent
 
@@ -598,7 +598,7 @@ On current Node versions, `node:sqlite` may emit an experimental startup warning
 
 ## Troubleshooting
 
-**"No MDGraph index found"** — Run `node dist/bin/mdgraph.js init` then `node dist/bin/mdgraph.js index` first.
+**"No MDGraph index found"** — Run `node dist/bin/mdgraph.js init` first. If you initialized with `--no-index`, run `node dist/bin/mdgraph.js index`.
 
 **Indexing is slow** — Check that `node_modules`, `dist`, and other large directories are in the exclude list. Use `--debug` or check `doctor` output.
 

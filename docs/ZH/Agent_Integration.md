@@ -59,7 +59,6 @@ Do not treat MDGraph as hidden memory, a source AST index, or an authority beyon
 
 ```bash
 node /absolute/path/to/mdgraph/dist/bin/mdgraph.js init --docs "docs/**/*.md"
-node /absolute/path/to/mdgraph/dist/bin/mdgraph.js index
 ```
 
 ## 宿主说明

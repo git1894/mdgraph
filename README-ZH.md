@@ -33,22 +33,22 @@ npm install
 npm run build
 ```
 
-### 2. 初始化项目
+### 2. 初始化并索引项目
 
 ```bash
 cd 你的项目目录
 node /path/to/mdgraph/dist/bin/mdgraph.js init --docs "docs/**/*.md"
 ```
 
-这将创建 `.mdgraph/config.json`，其中包含你的 Markdown 包含/排除 glob 模式。
+这将创建 `.mdgraph/config.json`，在需要时通过幂等的 `.gitignore` 区块保护本地图谱产物，并构建初始图谱索引。`.mdgraph/config.json` 可以被跟踪，`.mdgraph/graph.db` 和生成的 `.mdgraph` artifacts 默认保留为本地状态。只有在需要先检查或编辑配置时才使用 `--no-index`。
 
-### 3. 索引文档
+### 3. 刷新文档
 
 ```bash
 node /path/to/mdgraph/dist/bin/mdgraph.js index
 ```
 
-构建确定性图谱：文档、章节、实体、边 — 全部从结构中派生，不存在 LLM 幻觉。
+在 Markdown 变更后刷新确定性图谱：文档、章节、实体、边 — 全部从结构中派生，不存在 LLM 幻觉。
 
 ### 4. 连接你的代理
 
@@ -598,7 +598,7 @@ SQLite 数据库位于 `.mdgraph/graph.db`，存储以下记录类型：
 
 ## 故障排查
 
-**"未找到 MDGraph 索引"** — 首先运行 `node dist/bin/mdgraph.js init`，然后运行 `node dist/bin/mdgraph.js index`。
+**"未找到 MDGraph 索引"** — 首先运行 `node dist/bin/mdgraph.js init`。如果初始化时使用了 `--no-index`，再运行 `node dist/bin/mdgraph.js index`。
 
 **索引速度慢** — 检查 `node_modules`、`dist` 和其他大目录是否在排除列表中。使用 `--debug` 或检查 `doctor` 输出。
 

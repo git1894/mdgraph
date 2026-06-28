@@ -20,6 +20,7 @@
 | MCP text output wording | experimental | `src/mcp/tools.ts` | 文本是面向人的提示；机器契约优先使用 `structuredContent`。 |
 | Context recovery fields | stable-additive | `src/query/context-builder.ts` | Context item 暴露 `nodeId`、`documentId`、可选 `sectionId`、可选 `anchor`、line range、source refs、risk notes 和 graph-expansion `edgePath`，让 agent 无需从 prose 猜测即可恢复节点和 provenance。 |
 | `.mdgraph/config.json` fields | stable | `src/config/load-config.ts` | `docs`、`index`、`search`、`entities` 和 `embedding` 默认字段稳定。当前 merge 逻辑会忽略未知字段。 |
+| `.mdgraph` file governance | stable | `src/config/load-config.ts`、`src/bin/mdgraph.ts` | `mdgraph init` 保持 `.mdgraph/config.json` 可跟踪，在没有等价 ignore 规则时通过根 `.gitignore` 保护本地 `.mdgraph` artifacts，并默认构建初始 graph index。`.mdgraph/graph.db` 和生成的 `.mdgraph` artifacts 属于本地 workflow state，不是 source files。需要只生成配置时使用 `--no-index`。 |
 | SQLite schema metadata | stable | `src/db/schema.sql`、`src/db/connection.ts` | `schema_metadata.schema_version` 是兼容 gate。未来 schema version 会在应用本地 schema 前失败。 |
 | SQLite table internals | internal | `src/db/schema.sql` | rowid、FTS shadow table、vector blob 表示细节和 private bundle database 内容不是 public API。 |
 | Public graph record types | stable | `src/types.ts` | `GraphDocument`、`GraphSection`、`GraphEntity`、`SourceRef`、`GraphEdge`、`GraphChunk`、`ChunkVector`、`SearchResult` 和 `TraceStep`。 |
@@ -57,7 +58,8 @@
 - 运行 `npm run typecheck`、focused contract tests、`npm test`、`npm run build`、`npm run smoke:cli`、`npm run smoke:eval`、`npm run smoke:pack`、`npm run task:public-check` 和 `git diff --check`。
 - 当 package metadata 或 included public docs 变化时运行 `npm pack --dry-run`。
 - 验证 Node.js `>=22.5.0`；常规开发基线是当前 Node 22.x。
-- Windows 是必需平台，因为 MDGraph 当前在 Windows 上活跃开发。macOS 和 Linux 应在 `1.0` 前由 CI 或 release maintainer smoke 覆盖。
+- Linux 和 Windows full CI 是 release gate 基线；`1.0` 前 macOS 由 CI smoke 覆盖 build-output CLI 和 packed-artifact 行为。
+- 对平台相关的长运行 surface 使用 release maintainer smoke，而不是 CI：`serve --mcp`、`watch`，以及适用时通过 `MDGRAPH_EXTERNAL_ECC_PATH` 运行 external corpus smoke。
 - 当 scanner、parser、storage、query、MCP 或 doctor 行为对外部语料产生实质变化时，必须运行 external corpus smoke。
 
 ## 1.0 Readiness

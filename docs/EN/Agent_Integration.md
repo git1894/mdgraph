@@ -59,7 +59,6 @@ Run these once for the target project before relying on the server:
 
 ```bash
 node /absolute/path/to/mdgraph/dist/bin/mdgraph.js init --docs "docs/**/*.md"
-node /absolute/path/to/mdgraph/dist/bin/mdgraph.js index
 ```
 
 ## Host Notes

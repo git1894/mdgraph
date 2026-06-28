@@ -20,6 +20,7 @@ This document records the public contract boundary introduced for the 0.8 contra
 | MCP text output wording | experimental | `src/mcp/tools.ts` | Text is human-facing guidance; `structuredContent` is the preferred machine contract. |
 | Context recovery fields | stable-additive | `src/query/context-builder.ts` | Context items expose `nodeId`, `documentId`, optional `sectionId`, optional `anchor`, line ranges, source refs, risk notes, and graph-expansion `edgePath` so agents can recover nodes and provenance without guessing from prose. |
 | `.mdgraph/config.json` fields | stable | `src/config/load-config.ts` | `docs`, `index`, `search`, `entities`, and `embedding` default fields are stable. Unknown fields are currently ignored by merge logic. |
+| `.mdgraph` file governance | stable | `src/config/load-config.ts`, `src/bin/mdgraph.ts` | `mdgraph init` keeps `.mdgraph/config.json` trackable, protects local `.mdgraph` artifacts through the root `.gitignore` when no equivalent ignore rule exists, and builds the initial graph index by default. `.mdgraph/graph.db` and generated `.mdgraph` artifacts are local workflow state, not source files. Use `--no-index` for config-only initialization. |
 | SQLite schema metadata | stable | `src/db/schema.sql`, `src/db/connection.ts` | `schema_metadata.schema_version` gates compatibility. Future schema versions fail before local schema is applied. |
 | SQLite table internals | internal | `src/db/schema.sql` | Rowids, FTS shadow tables, vector blob representation internals, and private bundle database contents are not public API. |
 | Public graph record types | stable | `src/types.ts` | `GraphDocument`, `GraphSection`, `GraphEntity`, `SourceRef`, `GraphEdge`, `GraphChunk`, `ChunkVector`, `SearchResult`, and `TraceStep`. |
@@ -57,7 +58,8 @@ Before a 0.9 context/evidence hardening release:
 - Run `npm run typecheck`, focused contract tests, `npm test`, `npm run build`, `npm run smoke:cli`, `npm run smoke:eval`, `npm run smoke:pack`, `npm run task:public-check`, and `git diff --check`.
 - Run `npm pack --dry-run` when package metadata or included public docs change.
 - Validate on Node.js `>=22.5.0`; the regular development baseline is the current Node 22.x line.
-- Treat Windows as required because MDGraph is actively developed there. macOS and Linux should be covered by CI or release maintainer smoke before 1.0.
+- Treat Linux and Windows full CI as the release-gate baseline, and keep macOS covered by CI smoke for build-output CLI and packed-artifact behavior before 1.0.
+- Use release maintainer smoke, not CI, for platform-specific long-running surfaces: `serve --mcp`, `watch`, and external corpus smoke via `MDGRAPH_EXTERNAL_ECC_PATH` where applicable.
 - External corpus smoke is required when scanner, parser, storage, query, MCP, or doctor behavior changes materially.
 
 ## 1.0 Readiness

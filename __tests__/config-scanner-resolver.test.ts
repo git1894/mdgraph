@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_CONFIG, configPath, databasePath, initConfig, loadConfig } from "../src/config/load-config.js";
+import { DEFAULT_CONFIG, configPath, databasePath, initConfig, initProjectConfig, loadConfig } from "../src/config/load-config.js";
 import { openExistingDatabase } from "../src/db/connection.js";
 import { parseMarkdownDocument } from "../src/parser/markdown-parser.js";
 import { LinkResolver } from "../src/resolution/link-resolver.js";
@@ -52,6 +52,59 @@ describe("configuration loading", () => {
 
     fs.writeFileSync(target, JSON.stringify({ embedding: { dimensions: 4097 } }), "utf8");
     expect(() => loadConfig(root)).toThrow(/embedding\.dimensions.*at most 4096/);
+  });
+
+  it("protects local graph artifacts while allowing config to be tracked", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-config-governance-"));
+    tempDirs.push(root);
+
+    const result = initProjectConfig(root, ["notes/**/*.md"]);
+
+    expect(result.configPath).toBe(configPath(root));
+    expect(result.configCreated).toBe(true);
+    expect(result.gitignorePath).toBe(path.join(root, ".gitignore"));
+    expect(result.gitignoreUpdated).toBe(true);
+    expect(loadConfig(root).docs.include).toEqual(["notes/**/*.md"]);
+
+    const gitignore = fs.readFileSync(result.gitignorePath, "utf8");
+    expect(gitignore).toContain("# MDGraph local artifacts");
+    expect(gitignore).toContain(".mdgraph/*");
+    expect(gitignore).toContain("!.mdgraph/config.json");
+
+    const second = initProjectConfig(root);
+    expect(second.configCreated).toBe(false);
+    expect(second.gitignoreUpdated).toBe(false);
+    expect(fs.readFileSync(result.gitignorePath, "utf8")).toBe(gitignore);
+  });
+
+  it("appends MDGraph ignore rules without replacing existing gitignore content", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-config-append-gitignore-"));
+    tempDirs.push(root);
+    const gitignorePath = path.join(root, ".gitignore");
+    fs.writeFileSync(gitignorePath, "node_modules/\ndist/\n", "utf8");
+
+    const result = initProjectConfig(root);
+    const gitignore = fs.readFileSync(gitignorePath, "utf8");
+
+    expect(result.gitignoreUpdated).toBe(true);
+    expect(gitignore).toMatch(/^node_modules\/\ndist\/\n/);
+    expect(gitignore).toContain("# MDGraph local artifacts\n.mdgraph/*\n!.mdgraph/config.json\n");
+  });
+
+  it("does not append MDGraph rules when the directory is already ignored", () => {
+    const patterns = [".mdgraph/\n", "/.mdgraph/\n", ".mdgraph/*\n", "**/.mdgraph/**\n"];
+
+    for (const pattern of patterns) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "mdgraph-config-existing-gitignore-"));
+      tempDirs.push(root);
+      const gitignorePath = path.join(root, ".gitignore");
+      fs.writeFileSync(gitignorePath, pattern, "utf8");
+
+      const result = initProjectConfig(root);
+
+      expect(result.gitignoreUpdated).toBe(false);
+      expect(fs.readFileSync(gitignorePath, "utf8")).toBe(pattern);
+    }
   });
 });
 

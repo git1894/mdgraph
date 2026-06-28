@@ -27,7 +27,8 @@ Use this checklist before publishing an MDGraph release or asking a maintainer t
 - Confirm known output-shape inconsistencies are either normalized or intentionally documented.
 - Confirm `context --json` and MCP `mdgraph_context.structuredContent` expose recovery fields (`nodeId`, `documentId`, optional `sectionId`, optional `anchor`, and graph-expansion `edgePath`) for agent handoff to `node`, `trace`, and raw Markdown.
 - Confirm Node.js `>=22.5.0` remains the supported floor and the active release was tested on the current Node 22.x line.
-- Confirm Windows has been smoke-tested locally or in CI. macOS and Linux should have CI or release maintainer smoke before 1.0.
+- Confirm Linux and Windows full CI rows pass. Confirm the macOS CI smoke row passes build-output CLI and packed-artifact smoke before 1.0.
+- Run maintainer smoke for platform-specific long-running surfaces that CI intentionally does not automate: `serve --mcp`, `watch`, and external corpus smoke via `MDGRAPH_EXTERNAL_ECC_PATH` on each target OS where those paths matter.
 - Confirm the 1.0 release notes call out compatibility promises separately from feature additions.
 
 ## Command gate
@@ -64,6 +65,7 @@ Expected results:
 - `task:public-check` does not find tracked task artifacts under `docs/tasks/` except the allowed public files.
 - `git diff --check` is clean. On Windows CRLF files, set repository-local `core.whitespace=cr-at-eol` if needed to avoid false positives on unchanged CRLF endings.
 - External corpus smoke is required when scanner, parser, storage, query, MCP, or doctor behavior changes materially. If `MDGRAPH_EXTERNAL_ECC_PATH` is not set, record the skip explicitly.
+- The macOS CI row is smoke-only. It does not replace the full command gate or maintainer checks for MCP server, watcher, and external-corpus behavior.
 
 ## Package gate
 

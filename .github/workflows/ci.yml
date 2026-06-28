@@ -11,10 +11,17 @@ permissions:
 
 jobs:
   validate:
+    name: ${{ matrix.os }} / ${{ matrix.suite }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            suite: full
+          - os: windows-latest
+            suite: full
+          - os: macos-latest
+            suite: smoke
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -32,12 +39,15 @@ jobs:
         run: npm ci --registry=https://registry.npmjs.org
 
       - name: Audit dependencies
+        if: ${{ matrix.suite == 'full' }}
         run: npm audit --registry=https://registry.npmjs.org
 
       - name: Typecheck
+        if: ${{ matrix.suite == 'full' }}
         run: npm run typecheck
 
       - name: Test
+        if: ${{ matrix.suite == 'full' }}
         run: npm test
 
       - name: Build
@@ -50,6 +60,7 @@ jobs:
         run: npm run smoke:pack
 
       - name: MDGraph workflow report and bundle
+        if: ${{ matrix.suite == 'full' }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path .mdgraph/reports | Out-Null
@@ -69,6 +80,7 @@ jobs:
           node dist/bin/mdgraph.js report --json --eval --bundle $bundle.bundleDir | Out-File -Encoding utf8 .mdgraph/reports/report.json
 
       - name: Upload MDGraph workflow artifacts
+        if: ${{ matrix.suite == 'full' }}
         uses: actions/upload-artifact@v4
         with:
           name: mdgraph-${{ matrix.os }}

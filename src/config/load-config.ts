@@ -14,6 +14,20 @@ const defaultEnabledKinds: EntityKind[] = [
   "concept"
 ];
 
+const MDGRAPH_GITIGNORE_MARKER = "# MDGraph local artifacts";
+const MDGRAPH_GITIGNORE_BLOCK = [
+  MDGRAPH_GITIGNORE_MARKER,
+  ".mdgraph/*",
+  "!.mdgraph/config.json"
+].join("\n");
+
+export interface InitProjectConfigResult {
+  configPath: string;
+  configCreated: boolean;
+  gitignorePath: string;
+  gitignoreUpdated: boolean;
+}
+
 export const DEFAULT_CONFIG: MDGraphConfig = {
   docs: {
     include: ["docs/**/*.md", "**/*.md"],
@@ -93,6 +107,46 @@ export function initConfig(projectRoot: string, docsInclude?: string[]): string 
   }
 
   return target;
+}
+
+export function initProjectConfig(projectRoot: string, docsInclude?: string[]): InitProjectConfigResult {
+  const target = configPath(projectRoot);
+  const configCreated = !fs.existsSync(target);
+  initConfig(projectRoot, docsInclude);
+  const gitignore = ensureMdgraphGitignore(projectRoot);
+
+  return {
+    configPath: target,
+    configCreated,
+    gitignorePath: gitignore.path,
+    gitignoreUpdated: gitignore.updated
+  };
+}
+
+function ensureMdgraphGitignore(projectRoot: string): { path: string; updated: boolean } {
+  const target = path.join(projectRoot, ".gitignore");
+  const existing = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+  if (hasMdgraphIgnoreProtection(existing)) {
+    return { path: target, updated: false };
+  }
+
+  const separator = existing.length ? (existing.endsWith("\n") ? "\n" : "\n\n") : "";
+  fs.writeFileSync(target, `${existing}${separator}${MDGRAPH_GITIGNORE_BLOCK}\n`, "utf8");
+  return { path: target, updated: true };
+}
+
+function hasMdgraphIgnoreProtection(content: string): boolean {
+  if (content.includes(MDGRAPH_GITIGNORE_MARKER)) {
+    return true;
+  }
+
+  const patterns = new Set(content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith("!"))
+    .map((line) => line.replace(/^\//, "")));
+
+  return [".mdgraph/", ".mdgraph/*", ".mdgraph/**", "**/.mdgraph/**"].some((pattern) => patterns.has(pattern));
 }
 
 function mergeConfig(base: MDGraphConfig, override: Partial<MDGraphConfig>): MDGraphConfig {

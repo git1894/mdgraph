@@ -6,6 +6,19 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.9.1 - 2026-06-28
+
+### Added
+
+- Added `mdgraph init` coverage to CLI smoke checks so the command must leave a fresh project indexed by default.
+- Added init-time `.gitignore` governance so `.mdgraph/config.json` can be tracked while local graph artifacts such as `.mdgraph/graph.db` stay ignored by default.
+
+### Changed
+
+- Changed `mdgraph init` to build the initial graph index by default, with `--no-index` available for config-only initialization.
+- Extended the CI release gate with a macOS smoke matrix row while keeping the Linux and Windows full validation rows intact.
+- Documented that platform-specific MCP server, watcher, and external-corpus smoke still require maintainer verification outside CI.
+
 ## 0.9.0 - 2026-06-28
 
 ### Added
